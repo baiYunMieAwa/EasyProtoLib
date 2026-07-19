@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]         # 构建所需的工具
+build-backend = "setuptools.build_meta" # 使用的构建后端
+
+[project]
+name = "easyprotolib"               # 用户用 pip install 的名字，需唯一
+version = "0.1.0"                   # 遵循语义化版本规范
+authors = [
+    { name = "baiYunMieAwa", email = "baiyunmie@163.com" },
+]
+description = "A Minecraft protocol library written in Python."
+readme = "README.md"                # 项目说明文件
+requires-python = ">=3.10"          # 支持的Python版本
+license = { text = "MIT License" }  # 开源许可证
+classifiers = [                     # PyPI 分类标签
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [                    # 项目依赖
+    "mutf-8>=1.0.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/baiYunMieAwa/EasyProtoLib"
+"Bug Tracker" = "https://github.com/baiYunMieAwa/EasyProtoLib/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]  # 告诉 setuptools 去 src 目录下找包
