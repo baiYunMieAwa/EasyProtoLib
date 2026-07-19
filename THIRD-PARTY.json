@@ -1,0 +1,11 @@
+[
+  {
+    "Author": "Tyler Kennedy <tk@tkte.ch>",
+    "License": "MIT",
+    "LicenseFile": "G:\\Desktop\\temp1\\EasyProtoLib\\.venv\\Lib\\site-packages\\mutf8-1.1.0.dist-info\\licenses\\LICENCE",
+    "LicenseText": "Copyright (c) 2012-2015 Tyler Kennedy <tk@tkte.ch>. All rights reserved.\n \nPermission is hereby granted, free of charge, to any person obtaining a\ncopy of this software and associated documentation files (the \"Software\"), \nto deal in the Software without restriction, including without limitation \nthe rights to use, copy, modify, merge, publish, distribute, sublicense, \nand/or sell copies of the Software, and to permit persons to whom the \nSoftware is furnished to do so, subject to the following conditions:\n \nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n \nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, \nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER \nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING \nFROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER \nDEALINGS IN THE SOFTWARE.\n",
+    "Name": "mutf8",
+    "URL": "https://github.com/TkTech/mutf8",
+    "Version": "1.1.0"
+  }
+]
