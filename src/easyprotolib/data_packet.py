@@ -93,6 +93,19 @@ class MCDataPacket:
     @classmethod
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+        if cls.__name__ in ('MCDataPackets',
+             'MCCDataPacket',
+             'MCSDataPacket',
+             'MCCStateDataPacket',
+             'MCCLoginDataPacket',
+             'MCCPlayDataPacket',
+             'MCCConfigurationDataPacket',
+             'MCSHandshakeDataPacket',
+             'MCSStateDataPacket',
+             'MCSLoginDataPacket',
+             'MCSPlayDataPacket',
+             'MCSConfigurationDataPacket'):
+            return
         if cls.packet_id < 0:
             raise ValueError(f"{cls.__name__} 未设定合法的 `packet_id` 值")
         if cls.state < 0:

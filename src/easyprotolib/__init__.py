@@ -82,3 +82,4 @@ from .err import MinecraftException, MCProtocolIdNotFound
 if debug:
     # 开发中/不稳定的api
     from .basic_datatypes import MCDependentObject
+

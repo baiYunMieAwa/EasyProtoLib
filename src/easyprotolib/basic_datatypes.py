@@ -30,7 +30,9 @@ class MCObject:
     @staticmethod
     def obj_deserialization(data: bytearray) -> tuple[Any, int]: ...
 
-    deserialization = obj_deserialization
+    @classmethod
+    def deserialization(cls, data: bytearray) -> tuple[Any, int]:
+        return cls.obj_deserialization(data)
 
     def __bytes__(self):
         return bytes(self.serialization())
