@@ -18,7 +18,7 @@ classifiers = [                     # PyPI 分类标签
     "Operating System :: OS Independent",
 ]
 dependencies = [                    # 项目依赖
-    "mutf-8>=1.0.0",
+    "mutf8>=1.0.0",
 ]
 
 [project.urls]
