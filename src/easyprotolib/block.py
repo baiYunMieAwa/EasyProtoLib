@@ -40,11 +40,13 @@ class MCBlock:
         default = -1
         for i in self.protocol_data:
             if "properties" in i and i["properties"] == self.protocol_state:
+                self.protocol_id = i["id"]
                 return i["id"]
             elif "default" in i and i["default"]:
                 default = i["id"]
         if default == -1:
             raise MCProtocolIdNotFound(f"block: {self.get_identifier()}, state: {self.protocol_state} / {self.state}")
+        self.protocol_id = default
         return default
 
     @classmethod

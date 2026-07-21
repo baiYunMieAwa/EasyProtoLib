@@ -1,4 +1,4 @@
-from .basic_datatypes import MCObject, MCVarInt, MCLongArray, MCUnsignedByteArrayArray, MCUnsignedByte, MCShort, MCVarIntArray, MCInt
+from .basic_datatypes import MCObject, MCVarInt, MCLongArray, MCUnsignedByteArrayArray, MCUnsignedByte, MCShort, MCVarIntArray, MCInt, MCLong
 from .nbt import TAGLongArray, TAGCompound, MCNBT
 import math
 from typing import Any
@@ -8,49 +8,44 @@ import time
 def _pack(l: list[int], bpe: int) -> list[int]:
     if bpe < 1 or bpe > 64:
         raise ValueError(f"BPE({bpe}) must be between 1 and 64")
-
     n = len(l)
-    entries_per_long = 64 // bpe
-    num_longs = (n + entries_per_long - 1) // entries_per_long
-    result = [0] * num_longs
-
-    mask = (1 << bpe) - 1
-    sixty_four_mask = (1 << 64) - 1
-
-    for i in range(n):
-        value = l[i]
-        long_idx = i // entries_per_long
-        bit_idx = (i % entries_per_long) * bpe
-
-        # 清空目标位
-        result[long_idx] &= ~(mask << bit_idx)
-        # 写入新值
-        result[long_idx] |= (value & mask) << bit_idx
-        # 截断至 64 位
-        result[long_idx] &= sixty_four_mask
-
-    j = 0
-    for i in result:
-        if i >= (1 << 63):
-            result[j] -= (1 << 64)
-        j += 1
-
-    return result
+    if bpe == 4:
+        num_longs = (n + 15) >> 4
+        result = [0] * num_longs
+        for i in range(n):
+            long_idx = i >> 4
+            bit_idx = (i & 15) << 2
+            # 清空目标位
+            result[long_idx] &= ~(15 << bit_idx)
+            # 写入新值
+            result[long_idx] |= (l[i] & 15) << bit_idx
+    else:
+        entries_per_long = 64 // bpe
+        num_longs = (n + entries_per_long - 1) // entries_per_long
+        result = [0] * num_longs
+        mask = (1 << bpe) - 1
+        for i in range(n):
+            long_idx = i // entries_per_long
+            bit_idx = (i % entries_per_long) * bpe
+            # 清空目标位
+            result[long_idx] &= ~(mask << bit_idx)
+            # 写入新值
+            result[long_idx] |= (l[i] & mask) << bit_idx
+    threshold = 1 << 63
+    mask = 1 << 64
+    return [x - mask if x >= threshold else x for x in result]   # 返回的列表中整数的取值范围为0 ~ (1 << 64) - 1
 
 
 def _unpack(l: list[int], bpe: int, length: int) -> list[int]:
     if bpe < 1 or bpe > 64:
-        raise ValueError("bpe must be between 1 and 64")
-
+        raise ValueError(f"BPE({bpe}) must be between 1 and 64")
     entries_per_long = 64 // bpe
     mask = (1 << bpe) - 1
     result = [0] * length
-
     for i in range(length):
         long_idx = i // entries_per_long
         bit_idx = (i % entries_per_long) * bpe
         result[i] = (l[long_idx] >> bit_idx) & mask
-
     return result
 
 
@@ -61,7 +56,7 @@ class MCBitSet(MCLongArray):
             super().__init__([])
             return
         num_longs = (n + 0x3f) >> 6
-        result = []
+        result = [0] * num_longs
         for i in range(num_longs):
             start = i << 6
             end = min(start + 0x40, n)
@@ -69,7 +64,7 @@ class MCBitSet(MCLongArray):
             for j in range(start, end):
                 if data[j]:
                     val |= (1 << j)
-            result.append(val)
+            result[i] = val
         super().__init__(result)
 
     @classmethod
@@ -77,25 +72,24 @@ class MCBitSet(MCLongArray):
         length, offset = MCVarInt.obj_deserialization(data)
         longs = []
         for i in range(length):
-            t = cls.MCObjectType.obj_deserialization(data[offset:])
-            longs.append(t[0])
-            offset += t[1]
-        bits = []
+            longs.append(MCLong.obj_deserialization(data[offset:offset+8])[0])
+            offset += 8
+        bits = [False] * bit_count
         for i in range(bit_count):
-            long_idx = i // 64
-            bit_offset = i % 64
+            long_idx = i >> 6
+            bit_offset = i & 0x3f
             if long_idx < len(longs):
                 bit = (longs[long_idx] >> bit_offset) & 1
-                bits.append(bit == 1)
-            else:
-                bits.append(False)
+                bits[i] = bit == 1
         return bits, offset
 
 
 # noinspection DuplicatedCode
 class MCLightData(MCObject):
-    def __init__(self, sky_light: list[int], block_light: list[int], section_count: int=24):
+
+    def __init__(self, sky_light: list[int], block_light: list[int], section_count: int=24, fast_mode=False):
         super().__init__((sky_light, block_light, section_count))
+        self.fast_mode = fast_mode
 
     def obj_serialization(self) -> bytearray:
         sky_light_, block_light_, section_count = self.data
@@ -104,46 +98,56 @@ class MCLightData(MCObject):
         # 初始化掩码
         sky_mask = [True] * total_sections
         block_mask = [True] * total_sections
-        empty_sky_mask = [True] * total_sections
-        empty_block_mask = [True] * total_sections
 
-        l = 0
-        sky_arrays = []
-        block_arrays = []
         assert len(sky_light_) == len(block_light_)
 
-        for i in range(0, len(sky_light_), 2):
-            low = sky_light_[i] & 0x0F  # 取低4位，确保数值在0~15
-            high = sky_light_[i + 1] & 0x0F  # 取低4位
-            byte_val = (high << 4) | low  # 高4位放第二个，低4位放第一个
-            if byte_val != 0:
-                empty_sky_mask[l >> 11] = False
-            if sky_mask[l >> 11]:
+        if self.fast_mode:
+            empty_sky_mask = [False] * total_sections
+            empty_block_mask = [False] * total_sections
+            sky_arrays   = [[(sky_light_[j + 1] << 4) | sky_light_[j] for j in range(i << 1, (i << 1) + 4096, 2)] for i in range(0, total_sections << 11, 2048)]
+            block_arrays = [[(block_light_[j + 1] << 4) | block_light_[j] for j in range(i << 1, (i << 1) + 4096, 2)] for i in range(0, total_sections << 11, 2048)]
+            # 假设光照数据确实严格在0~15范围内
+            # -5~256 在 CPython 中是永生对象, 不会重复创建和销毁
+        else:
+            empty_sky_mask = [True] * total_sections
+            empty_block_mask = [True] * total_sections
+            l = 0
+            sky_arrays = []
+            block_arrays = []
+            for i in range(0, len(sky_light_), 2):
+                a = l >> 11
+                byte_val = ((sky_light_[i + 1] & 0x0F) << 4) | (sky_light_[i] & 0x0F)        # 高4位放第二个，低4位放第一个
+                if byte_val != 0:
+                    empty_sky_mask[a] = False
                 try:
-                    sky_arrays[l >> 11].append(byte_val)
+                    sky_arrays[a].append(byte_val)
                 except IndexError:
                     sky_arrays.append([byte_val])
 
-            low = block_light_[i] & 0x0F  # 取低4位，确保数值在0~15
-            high = block_light_[i + 1] & 0x0F  # 取低4位
-            byte_val = (high << 4) | low  # 高4位放第二个，低4位放第一个
-            if byte_val != 0:
-                empty_block_mask[l >> 11] = False
-            if block_mask[l >> 11]:
+                byte_val = ((block_light_[i + 1] & 0x0F) << 4) | (block_light_[i] & 0x0F)        # 高4位放第二个，低4位放第一个
+                if byte_val != 0:
+                    empty_block_mask[a] = False
                 try:
-                    block_arrays[l >> 11].append(byte_val)
+                    block_arrays[a].append(byte_val)
                 except IndexError:
                     block_arrays.append([byte_val])
-            l += 1
+                l += 1
 
         result =  MCBitSet(sky_mask).serialization()
         result += MCBitSet(block_mask)
         result += MCBitSet(empty_sky_mask)
         result += MCBitSet(empty_block_mask)
-        result += MCUnsignedByteArrayArray(sky_arrays)
-        result += MCUnsignedByteArrayArray(block_arrays)
+        try:
+            result += MCUnsignedByteArrayArray(sky_arrays)
+            result += MCUnsignedByteArrayArray(block_arrays)
+        except OverflowError as e:
+            if self.fast_mode:
+                print("部分光照强度可能不在0~15之内, 快速模式关闭! 这是预期中的吗? ")
+                self.fast_mode = False
+                return self.obj_serialization()
+            raise e
         # result 的组装耗时: 100~130ms -> 1~2ms
-        return result        # 方法总耗时: 240~350ms -> 200~250ms -> 130~160ms -> 30~50ms
+        return result        # 方法总耗时: 240~350ms -> 200~250ms -> 130~160ms -> 30~50ms -> 15~22ms(FAST MODE) -> 13~15ms(FAST MODE)
 
     @classmethod
     def obj_deserialization(cls, data: bytearray, section_count: int=24) -> tuple[tuple[list[int], list[int]], int]:
@@ -215,7 +219,7 @@ class MCLightData(MCObject):
 
         result = [0] * 4096
         for i, byte_val in enumerate(compressed):
-            result[2 * i] = byte_val & 0x0F  # 低4位
+            result[2 * i] = byte_val & 0x0F             # 低4位
             result[2 * i + 1] = (byte_val >> 4) & 0x0F  # 高4位
         return result
 
@@ -234,7 +238,9 @@ class MCHeightMap(MCObject):
             heightmap = heightmap_[name]
             if len(heightmap) != 256:
                 raise ValueError("高度图必须恰好包含256个条目(16*16)")
-            r = _pack(heightmap, bits_per_entry)
+            threshold = 1 << 63
+            mask = 1 << 64
+            r = [i - mask if i >= threshold else i for i in _pack(heightmap, bits_per_entry)]
             result.append(TAGLongArray(name, r))
         r = TAGCompound("", result).serialization()
         return r        # 0~1ms
@@ -259,11 +265,11 @@ class MCPaletteContainer(MCObject):
 
     def obj_serialization(self) -> bytearray:
         result = bytearray(b'')
-        i = []
-        for id in self.data:
-            if id not in i:
-                i.append(id)
-        bpe = max(self.min_bpe, math.ceil(math.log2(len(i))))
+        i = list(set(self.data))
+        if len(i) == 1:
+            bpe = 0
+        else:
+            bpe = max(self.min_bpe, math.ceil(math.log2(len(i))))
         if bpe > self.max_bpe:
             # 直接模式
             bpe = max(self.bpe, bpe)
@@ -273,8 +279,14 @@ class MCPaletteContainer(MCObject):
             # 间接模式
             result += MCUnsignedByte(bpe)
             result += MCVarIntArray(i)
-            data = [i.index(j) for j in self.data]
-            result += MCLongArray(_pack(data, bpe))
+            data = [i.index(j) for j in self.data]          # 190~220μs
+            if bpe == 1:
+                num = 0
+                for bit in data:
+                    num = (num << 1) | bit
+                result += num.to_bytes((len(data) + 7) >> 3, 'big')
+            else:
+                result += MCLongArray(_pack(data, bpe))     # 1.8~2.1ms -> 1.6~1.8ms
         else:
             # 单值模式
             result += MCUnsignedByte(0)
@@ -324,16 +336,10 @@ class MCProtocolChunkSection(MCObject):
     def obj_serialization(self) -> bytearray:
         result = bytearray(b'')
         cs = self.data
-        result += MCShort(cs.get_block_count() - cs.get_air_count())    # 1~2ms -> 0~1ms
-        blocks = []
-        for i in cs.blocks:
-            blocks.append(i.get_protocol_id())          # 5~6ms -> 0~1ms
-        result += MCBlockPaletteContainer(blocks)       # 5~6ms -> 2~5ms
-        biomes = []
-        for i in cs.biomes:
-            biomes.append(i.get_protocol_id())          # 0~1ms
-        result += MCBiomePaletteContainer(biomes)       # 0ms
-        return result                                   # 11~15ms -> 4~7ms -> 3~4ms
+        result += MCShort(cs.get_block_count() - cs.get_air_count())    # 1~2ms -> 0~1ms -> 7~8μs
+        result += MCBlockPaletteContainer(cs.blocks_id)                 # 5~6ms -> 4~5ms
+        result += MCBiomePaletteContainer(cs.biomes_id)                 # 0ms -> 100~120μs
+        return result                                                   # 11~15ms -> 4~7ms -> 3~4ms -> 2.5~3.0ms
 
     @staticmethod
     def obj_deserialization(data: bytearray) -> tuple[Any, int]:
@@ -349,8 +355,8 @@ class MCChunkData(MCObject):
         result = bytearray(b'')
         for i in chunk.chunk_sections:
             result += MCProtocolChunkSection(i)
-        result = MCVarInt(len(result)) + result     # 11~14ms   -> 5~7ms     -> 3~4ms
-        return result                               # 360~300ms -> 180~140ms -> 80~110ms
+        result[:0] = MCVarInt(len(result)).serialization()      # 11~14ms   -> 5~7ms     -> 3~4ms
+        return result                                           # 360~300ms -> 180~140ms -> 80~110ms
 
     @staticmethod
     def obj_deserialization(data: bytearray) -> tuple[Any, int]:

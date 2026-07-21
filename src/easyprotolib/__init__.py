@@ -41,7 +41,10 @@ from .advanced_datatypes import MCChunkData, MCLightData, MCHeightMap
 
 
 from .data_packet import MCDataPackets
+from .data_packet import MCConfig
 from .data_packet import S2C, C2S
+from .data_packet import SIDE_CLIENT, SIDE_SERVER
+from .data_packet import STATE_HANDSHAKE, STATE_STATE, STATE_LOGIN, STATE_PLAY, STATE_CONFIGURATION
 
 from .data_packet import MCDataPacket
 from .data_packet import MCCDataPacket, MCSDataPacket

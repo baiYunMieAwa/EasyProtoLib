@@ -38,7 +38,9 @@ class MCChunkSection:
         self.y = y
         self.z = z
         self.blocks = blocks
+        self.blocks_id = [i.get_protocol_id() for i in blocks]
         self.biomes = biomes
+        self.biomes_id = [i.get_protocol_id() for i in biomes]
         self.air_count = self.__get_air_count()
 
     @staticmethod

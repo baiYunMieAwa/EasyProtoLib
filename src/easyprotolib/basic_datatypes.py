@@ -1,8 +1,10 @@
+import sys
 from typing import Any
 import struct
 import json
 import math
 import uuid
+import array
 
 
 def _round(x: int | float) -> int:
@@ -485,8 +487,7 @@ class MCObjectArray(MCObject):
         if len(self.data) == 0:
             return MCVarInt(0).serialization()
         if self.MCObjectType.length < 0:
-            result = bytearray(0)
-            result += MCVarInt(len(self.data))
+            result = MCVarInt(len(self.data)).serialization()
             if isinstance(self.data[0], MCObject):
                 for i in self.data:
                     result += i
@@ -500,7 +501,7 @@ class MCObjectArray(MCObject):
         offset = len(length)
         if isinstance(self.data[0], MCObject):
             for i in self.data:
-                i = i.serialization()
+                i = i.pack()
                 result[offset:offset + len(i)] = i
         else:
             for i in self.data:
@@ -526,6 +527,19 @@ class MCIdentifierArray(MCObjectArray):
 
 class MCLongArray(MCObjectArray):
     MCObjectType = MCLong
+
+    def obj_serialization(self) -> bytearray:
+        if len(self.data) == 0:
+            return MCVarInt(0).serialization()
+        result = MCVarInt(len(self.data)).serialization()
+        if isinstance(self.data[0], MCObject):
+            data = [i.data for i in self.data]
+        else:
+            data = self.data
+        arr = array.array('q', data)
+        if sys.byteorder != "big":
+            arr.byteswap()
+        return result + memoryview(arr)
 
 
 class MCUnsignedByteArray(MCObjectArray):
@@ -566,21 +580,73 @@ class MCVarIntArray(MCObjectArray):
 
 
 class MCDependentObject(MCObject):
-    def __init__(self, data: tuple[MCBoolean, MCObject]):
+    condition: MCObject = MCBoolean
+    body: MCObject = MCObject
+
+    def __init__(self, data: tuple[condition, body]):
         super().__init__(data)
 
     @staticmethod
-    def judge(condition: MCObject):
+    def judge_mcobject(condition: MCObject) -> bool:
         return condition.data
 
+    @staticmethod
+    def judge_pyobject(condition) -> bool:
+        return condition
+
     def obj_serialization(self) -> bytearray:
-        if self.judge(self.data[0]):
-            return self.data[0].serialization() + self.data[1].serialization()
-        return self.data[0].serialization()
+        if self.judge_mcobject(self.data[0]):
+            return self.data[0] + self.data[1]
+        return self.data[0].pack()
+
+    @classmethod
+    def obj_deserialization(cls, data: bytearray) -> tuple[tuple, int]:
+        condition, offset = cls.condition.deserialization(data)
+        if not cls.judge_pyobject(condition):
+            return (condition, None), offset
+        body, offset2 = cls.body.deserialization(data[offset:])
+        return (condition, body), offset + offset2
+
+
+class MCStruct(MCObject):
+    fields: list[tuple[str, type[MCObject], MCObject | None]] = []
+
+    def __init__(self, data: list[MCObject]):
+        super().__init__(data)
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[Any, int]:
-        pass
+    def characterization(a):
+        return a.replace(" ", "").replace("\t", "").replace("_", "").replace("-", "").lower()
+
+    def obj_serialization(self) -> bytearray:
+        result = bytearray(b'')
+        for field in self.fields:
+            value = None
+            for key in self.data:
+                if self.characterization(key) == self.characterization(field[0]):
+                    value = self.data[key]
+            if value is None:
+                if field[2] is None:    # 无默认值
+                    raise ValueError("字段不完整")
+                value = field[2]
+            if isinstance(value, str) and value.upper() == "PASS":
+                continue
+            elif not isinstance(value, field[1]):
+                raise TypeError(f"字段 {field[0]} 类型有误: 预期 {field[1].__name__}, 实际 {value.__name__}")
+            if hasattr(field[1], "__MCObjectSetter__") and field[1].__MCObjectSetter__:
+                value = MCObjectDuplicator(field[1], value)
+            result += value
+        return result
+
+    @classmethod
+    def obj_deserialization(cls, data: bytearray) -> tuple[dict, int]:
+        result = {}
+        offset = 0
+        for i in cls.fields:
+            r, length = i[1].obj_deserialization(data[offset:])
+            result[i[0]] = r
+            offset += length
+        return result, offset
 
 
 def MCObjectSetter(mc_object: type[MCObject], new_name: str="", **kwargs):
