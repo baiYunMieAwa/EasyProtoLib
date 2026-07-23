@@ -1,14 +1,11 @@
 from .block import MCBlock
 from .biome import MCBiome
-# from .advanced_datatypes import MCChunkData, MCProtocolChunkSection
 
 
 class MCChunk:
     def __init__(self, x, z, blocks: list[MCBlock], biomes: list[MCBiome], chunk_section_count: int = 24, min_y: int = -64):
         self.x = x
         self.z = z
-        self.blocks = blocks
-        self.biomes = biomes
         self.chunk_sections = []
         for i in range(chunk_section_count):
             self.chunk_sections.append(MCChunkSection(x, i + (min_y >> 4), z, blocks[i << 12:(i + 1) << 12], biomes[i << 6:(i + 1) << 6]))

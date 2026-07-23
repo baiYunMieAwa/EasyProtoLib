@@ -1,5 +1,6 @@
-from .basic_datatypes import MCObject, MCVarInt, MCLongArray, MCUnsignedByteArrayArray, MCUnsignedByte, MCShort, MCVarIntArray, MCInt, MCLong
+from .basic_datatypes import MCObject, MCObjectArray, MCVarInt, MCLongArray, MCUnsignedByteArrayArray, MCUnsignedByte, MCShort, MCVarIntArray, MCInt, MCLong
 from .nbt import TAGLongArray, TAGCompound, MCNBT
+from .block import MCBlock, MCBlockEntitiesMap
 import math
 from typing import Any
 import time
@@ -68,11 +69,11 @@ class MCBitSet(MCLongArray):
         super().__init__(result)
 
     @classmethod
-    def obj_deserialization(cls, data: bytearray, bit_count=-1) -> tuple[list[bool], int]:
-        length, offset = MCVarInt.obj_deserialization(data)
+    def _obj_deserialization(cls, data: bytearray, bit_count=-1) -> tuple[list[bool], int]:
+        length, offset = MCVarInt._obj_deserialization(data)
         longs = []
         for i in range(length):
-            longs.append(MCLong.obj_deserialization(data[offset:offset+8])[0])
+            longs.append(MCLong._obj_deserialization(data[offset:offset + 8])[0])
             offset += 8
         bits = [False] * bit_count
         for i in range(bit_count):
@@ -91,7 +92,7 @@ class MCLightData(MCObject):
         super().__init__((sky_light, block_light, section_count))
         self.fast_mode = fast_mode
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         sky_light_, block_light_, section_count = self.data
 
         total_sections = section_count + 2
@@ -144,23 +145,23 @@ class MCLightData(MCObject):
             if self.fast_mode:
                 print("部分光照强度可能不在0~15之内, 快速模式关闭! 这是预期中的吗? ")
                 self.fast_mode = False
-                return self.obj_serialization()
+                return self._obj_serialization()
             raise e
         # result 的组装耗时: 100~130ms -> 1~2ms
         return result        # 方法总耗时: 240~350ms -> 200~250ms -> 130~160ms -> 30~50ms -> 15~22ms(FAST MODE) -> 13~15ms(FAST MODE)
 
     @classmethod
-    def obj_deserialization(cls, data: bytearray, section_count: int=24) -> tuple[tuple[list[int], list[int]], int]:
-        sky_mask, offset = MCBitSet.obj_deserialization(data)
-        block_mask, l = MCBitSet.obj_deserialization(data[offset:])
+    def _obj_deserialization(cls, data: bytearray, section_count: int=24) -> tuple[tuple[list[int], list[int]], int]:
+        sky_mask, offset = MCBitSet._obj_deserialization(data)
+        block_mask, l = MCBitSet._obj_deserialization(data[offset:])
         offset += l
-        empty_sky_mask, l = MCBitSet.obj_deserialization(data[offset:])
+        empty_sky_mask, l = MCBitSet._obj_deserialization(data[offset:])
         offset += l
-        empty_block_mask, l = MCBitSet.obj_deserialization(data[offset:])
+        empty_block_mask, l = MCBitSet._obj_deserialization(data[offset:])
         offset += l
-        sky_arrays, l = MCUnsignedByteArrayArray.obj_deserialization(data[offset:])
+        sky_arrays, l = MCUnsignedByteArrayArray._obj_deserialization(data[offset:])
         offset += l
-        block_arrays, l = MCUnsignedByteArrayArray.obj_deserialization(data[offset:])
+        block_arrays, l = MCUnsignedByteArrayArray._obj_deserialization(data[offset:])
         offset += l
         while len(sky_mask) < section_count + 2:
             sky_mask.append(False)
@@ -230,7 +231,7 @@ class MCHeightMap(MCObject):
         # 高度图在高版本不再是NBT了, 但在1.18.2中, 高度图仍然是NBT
         super().__init__((heightmap, world_height))
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         heightmap_, world_height = self.data
         bits_per_entry = math.ceil(math.log2(world_height + 1))
         result = []
@@ -246,9 +247,9 @@ class MCHeightMap(MCObject):
         return r        # 0~1ms
 
     @staticmethod
-    def obj_deserialization(data: bytearray, world_height: int=9) -> tuple[dict[str, list[int]], int]:
+    def _obj_deserialization(data: bytearray, world_height: int=9) -> tuple[dict[str, list[int]], int]:
         bits_per_entry = math.ceil(math.log2(world_height + 1))
-        result = MCNBT.obj_deserialization(data)
+        result = MCNBT._obj_deserialization(data)
         result2 = {result[0][2][0].name: _unpack(result[0][2][0].data, bits_per_entry, 256), result[0][2][1].name: _unpack(
             result[0][2][1].data, bits_per_entry, 256)}
         return result2, result[1]
@@ -263,7 +264,7 @@ class MCPaletteContainer(MCObject):
         # data中存放全局id
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         result = bytearray(b'')
         i = list(set(self.data))
         if len(i) == 1:
@@ -295,20 +296,20 @@ class MCPaletteContainer(MCObject):
         return result
 
     @classmethod
-    def obj_deserialization(cls, data: bytearray) -> tuple[list[int], int]:
-        bpe, offset = MCUnsignedByte.obj_deserialization(data)
+    def _obj_deserialization(cls, data: bytearray) -> tuple[list[int], int]:
+        bpe, offset = MCUnsignedByte._obj_deserialization(data)
         if bpe >= cls.bpe:
-            result, l = MCLongArray.obj_deserialization(data[offset:])
+            result, l = MCLongArray._obj_deserialization(data[offset:])
             offset += l
             result = _unpack(result, bpe, cls.length)
         elif bpe == 0:
-            result, l = MCVarInt.obj_deserialization(data[offset:])
+            result, l = MCVarInt._obj_deserialization(data[offset:])
             offset += l
             result = [result] * cls.length
         else:
-            i, l = MCVarIntArray.obj_deserialization(data[offset:])
+            i, l = MCVarIntArray._obj_deserialization(data[offset:])
             offset += l
-            result, l = MCLongArray.obj_deserialization(data[offset:])
+            result, l = MCLongArray._obj_deserialization(data[offset:])
             offset += l
             result = _unpack(result, bpe, cls.length)
             result = [i[j] for j in result]
@@ -319,21 +320,21 @@ class MCBlockPaletteContainer(MCPaletteContainer):
     min_bpe = 4     # 间接模式最小BPE
     max_bpe = 8     # 间接模式最大BPE
     bpe = 15        # 直接模式最小BPE
-    length = -1     # 一旦正确配置了length, 该类型的反序列化方法就能正常运作, 但我懒得配置了(), 以后补上:D
+    length = 4096   # 一旦正确配置了length, 该类型的反序列化方法就能正常运作, 但我懒得配置了(), 以后补上:D        (归档)但已于2026/7/23补上
 
 
 class MCBiomePaletteContainer(MCPaletteContainer):
     min_bpe = 1     # 间接模式最小BPE
     max_bpe = 3     # 间接模式最大BPE
     bpe = 7         # 直接模式最小BPE
-    length = -1
+    length = 64
 
 
 class MCProtocolChunkSection(MCObject):
     def __init__(self, cs):
         super().__init__(cs)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         result = bytearray(b'')
         cs = self.data
         result += MCShort(cs.get_block_count() - cs.get_air_count())    # 1~2ms -> 0~1ms -> 7~8μs
@@ -342,25 +343,56 @@ class MCProtocolChunkSection(MCObject):
         return result                                                   # 11~15ms -> 4~7ms -> 3~4ms -> 2.5~3.0ms
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[Any, int]:
-        pass
+    def _obj_deserialization(data: bytearray) -> tuple[Any, int]:
+        block_count, offset = MCShort.deserialization(data)
+        block_palette, l = MCBlockPaletteContainer.deserialization(data[offset:])
+        offset += l
+        biome_palette, l = MCBiomePaletteContainer.deserialization(data[offset:])
+        offset += l
+        return (block_count, block_palette, biome_palette), offset
 
 
-class MCChunkData(MCObject):
+class MCChunkData(MCObjectArray):
+    MCObjectType = MCProtocolChunkSection
+
     def __init__(self, chunk):
-        super().__init__(chunk)
+        super().__init__(chunk.chunk_sections)
 
-    def obj_serialization(self) -> bytearray:
-        chunk = self.data
-        result = bytearray(b'')
-        for i in chunk.chunk_sections:
-            result += MCProtocolChunkSection(i)
-        result[:0] = MCVarInt(len(result)).serialization()      # 11~14ms   -> 5~7ms     -> 3~4ms
-        return result                                           # 360~300ms -> 180~140ms -> 80~110ms
+
+class MCBlockEntity(MCObject):
+    def __init__(self, block: MCBlock):
+        if not block.is_block_entity:
+            raise ValueError("方块不是方块实体")
+        super().__init__(block)
+
+    def _obj_serialization(self) -> bytearray:
+        block: MCBlock = self.data
+        result = MCUnsignedByte(((block.x & 0x0f) << 4) | (block.z & 0x0f)).serialization()
+        result += MCShort(block.y)
+        result += MCVarInt(block.block_entity_id)
+        result += block.block_entity_data
+        return result
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[Any, int]:
-        pass
+    def _obj_deserialization(data: bytearray) -> tuple[MCBlock, int]:
+        packed_xz, offset = MCUnsignedByte.deserialization(data)
+        x, z = packed_xz >> 4, packed_xz & 0x0f
+        y, l = MCShort.deserialization(data[offset:])
+        offset += l
+        id, l = MCVarInt.deserialization(data[offset:])
+        offset += l
+        nbt_data, l = MCNBT.deserialization_to_mcobject(data[offset:])
+        nbt_data: TAGCompound
+        offset += l
+        block: MCBlock = MCBlockEntitiesMap.get(id)()
+        block._set_block_pos(x, z)
+        block._set_y(y)
+        block.block_entity_data = nbt_data
+        return block, offset
+
+
+class MCBlockEntities(MCObjectArray):
+    MCObjectType = MCBlockEntity
 
 
 if __name__ == "__main__":

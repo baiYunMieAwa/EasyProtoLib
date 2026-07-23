@@ -1,7 +1,13 @@
 class MinecraftException(Exception):
     pass
 
-class MCProtocolIdNotFound(MinecraftException):
+class MCNotFound(MinecraftException):
+    pass
+
+class MCProtocolIdNotFound(MCNotFound):
+    pass
+
+class MCBlockNotFound(MCNotFound):
     pass
 
 class MCPacketNotFound(MCProtocolIdNotFound):

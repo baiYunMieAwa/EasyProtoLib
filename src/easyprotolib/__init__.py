@@ -59,8 +59,9 @@ from .data_packet import (MCSTeleportConfirm, MCSSetDifficulty, MCSChatMessage, 
 
 from .data_packet import MCCResponseStatus, MCCPongStatus           # State 1
 from .data_packet import MCCDisconnectLogin, MCCEncryptionRequest, MCCLoginSuccess, MCCSetCompression, MCCLoginPluginRequest    # State 2
-from .data_packet import (MCCServerDifficulty, MCCChatMessage, MCCPluginMessage, MCCDisconnectPlay, MCCUnloadChunk, MCCKeepAlive,
-                          MCCChunkDataAndUpdateLight, MCCUpdateLight, MCCJoinGame, MCCOpenBook, MCCPingPlay, MCCHeldItemChange) # State 3
+from .data_packet import (MCCServerDifficulty, MCCChatMessage, MCCDeclareCommands, MCCPluginMessage, MCCDisconnectPlay,
+                          MCCUnloadChunk, MCCKeepAlive, MCCChunkDataAndUpdateLight, MCCUpdateLight, MCCJoinGame,
+                          MCCOpenBook, MCCPingPlay, MCCHeldItemChange, MCCTimeUpdate) # State 3
 
 
 from .block import MCBlock
@@ -85,4 +86,3 @@ from .err import MinecraftException, MCProtocolIdNotFound
 if debug:
     # 开发中/不稳定的api
     from .basic_datatypes import MCDependentObject
-

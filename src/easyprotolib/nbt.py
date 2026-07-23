@@ -10,34 +10,39 @@ class MCNBT(MCObject):
         self.name = name
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         # [标签ID][标签名字节数][mutf-8编码的标签名][负载]
         # [1B][2B][...][...]
         if self.name == "":
-            return MCUnsignedByte(self.id) + b'\x00\x00' + self.nbt_serialization()
+            return MCUnsignedByte(self.id) + b'\x00\x00' + self._nbt_serialization()
         name = encode_modified_utf8(self.name)
-        return MCUnsignedByte(self.id) + MCUnsignedShort(len(name)) + name + self.nbt_serialization()
+        return MCUnsignedByte(self.id) + MCUnsignedShort(len(name)) + name + self._nbt_serialization()
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[tuple[type, str, ...], int]:
+    def _obj_deserialization(data: bytearray) -> tuple[tuple[type, str, ...], int]:
         offset = 0
-        id = MCUnsignedByte.obj_deserialization(data)[0]
+        id = MCUnsignedByte._obj_deserialization(data)[0]
         # print(offset)
         tag = NBT_tag_id[id]
         if tag == TAGEnd:
             return (tag, "", None), 1
         offset += 1
-        name_length, l = MCUnsignedShort.obj_deserialization(data[offset:])
+        name_length, l = MCUnsignedShort._obj_deserialization(data[offset:])
         offset += l
         name = decode_modified_utf8(data[offset:offset+name_length])
         offset += name_length
-        result = tag.nbt_deserialization(data[offset:])
+        result = tag._nbt_deserialization(data[offset:])
         return (tag, name, result[0]), offset + result[1]
 
-    def nbt_serialization(self) -> bytearray: ...
+    def _nbt_serialization(self) -> bytearray: ...
 
     @staticmethod
-    def nbt_deserialization(data: bytearray) -> tuple[..., int]: ...
+    def _nbt_deserialization(data: bytearray) -> tuple[..., int]: ...
+
+    @classmethod
+    def deserialization_to_mcobject(cls, data: bytearray) -> tuple[..., int]:
+        (tag, name, result), offset = cls._obj_deserialization(data)
+        return tag(name, result), offset
 
     def __str__(self):
         if type(self.data) != str:
@@ -55,13 +60,19 @@ class TAGEnd(MCNBT):
     def __init__(self):
         super().__init__("", None)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return bytearray(b'\x00')
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[tuple[type[MCNBT], str, None], int]:
+    def _obj_deserialization(data: bytearray) -> tuple[tuple[type[MCNBT], str, None], int]:
         if data[0] == 0:
             return (TAGEnd, "", None), 1
+        raise ValueError("data 的 id 不是 0x00, 却尝试解码为 TAGEnd 标签")
+
+    @classmethod
+    def deserialization_to_mcobject(cls, data: bytearray) -> tuple[MCNBT, int]:
+        if data[0] == 0:
+            return TAGEnd(), 1
         raise ValueError("data 的 id 不是 0x00, 却尝试解码为 TAGEnd 标签")
 
 
@@ -72,12 +83,12 @@ class TAGByte(MCNBT):
     def __init__(self, name: str, data: int):
         super().__init__(name, data)
 
-    def nbt_serialization(self) -> bytearray:
+    def _nbt_serialization(self) -> bytearray:
         return MCByte(self.data).serialization()
 
     @staticmethod
-    def nbt_deserialization(data: bytearray) -> tuple[int, int]:
-        return MCByte.obj_deserialization(data)
+    def _nbt_deserialization(data: bytearray) -> tuple[int, int]:
+        return MCByte._obj_deserialization(data)
 
 
 class TAGShort(MCNBT):
@@ -87,12 +98,12 @@ class TAGShort(MCNBT):
     def __init__(self, name: str, data: int):
         super().__init__(name, data)
 
-    def nbt_serialization(self) -> bytearray:
+    def _nbt_serialization(self) -> bytearray:
         return MCShort(self.data).serialization()
 
     @staticmethod
-    def nbt_deserialization(data: bytearray) -> tuple[int, int]:
-        return MCShort.obj_deserialization(data)
+    def _nbt_deserialization(data: bytearray) -> tuple[int, int]:
+        return MCShort._obj_deserialization(data)
 
 
 class TAGInt(MCNBT):
@@ -102,12 +113,12 @@ class TAGInt(MCNBT):
     def __init__(self, name: str, data: int):
         super().__init__(name, data)
 
-    def nbt_serialization(self) -> bytearray:
+    def _nbt_serialization(self) -> bytearray:
         return MCInt(self.data).serialization()
 
     @staticmethod
-    def nbt_deserialization(data: bytearray) -> tuple[int, int]:
-        return MCInt.obj_deserialization(data)
+    def _nbt_deserialization(data: bytearray) -> tuple[int, int]:
+        return MCInt._obj_deserialization(data)
 
 
 class TAGLong(MCNBT):
@@ -117,12 +128,12 @@ class TAGLong(MCNBT):
     def __init__(self, name: str, data: int):
         super().__init__(name, data)
 
-    def nbt_serialization(self) -> bytearray:
+    def _nbt_serialization(self) -> bytearray:
         return MCLong(self.data).serialization()
 
     @staticmethod
-    def nbt_deserialization(data: bytearray) -> tuple[int, int]:
-        return MCLong.obj_deserialization(data)
+    def _nbt_deserialization(data: bytearray) -> tuple[int, int]:
+        return MCLong._obj_deserialization(data)
 
 
 class TAGFloat(MCNBT):
@@ -132,12 +143,12 @@ class TAGFloat(MCNBT):
     def __init__(self, name: str, data: float):
         super().__init__(name, data)
 
-    def nbt_serialization(self) -> bytearray:
+    def _nbt_serialization(self) -> bytearray:
         return MCFloat(self.data).serialization()
 
     @staticmethod
-    def nbt_deserialization(data: bytearray) -> tuple[float, int]:
-        return MCFloat.obj_deserialization(data)
+    def _nbt_deserialization(data: bytearray) -> tuple[float, int]:
+        return MCFloat._obj_deserialization(data)
 
 
 class TAGDouble(MCNBT):
@@ -147,19 +158,19 @@ class TAGDouble(MCNBT):
     def __init__(self, name: str, data: float):
         super().__init__(name, data)
 
-    def nbt_serialization(self) -> bytearray:
+    def _nbt_serialization(self) -> bytearray:
         return MCDouble(self.data).serialization()
 
     @staticmethod
-    def nbt_deserialization(data: bytearray) -> tuple[float, int]:
-        return MCDouble.obj_deserialization(data)
+    def _nbt_deserialization(data: bytearray) -> tuple[float, int]:
+        return MCDouble._obj_deserialization(data)
 
 
 class TAGArray(MCNBT):
     """MC-NBT数据类型 数组基类"""
     tag_type: MCObject = MCObject
 
-    def nbt_serialization(self) -> bytearray:
+    def _nbt_serialization(self) -> bytearray:
         # [元素个数]([元素负载][...])
         result = MCInt(len(self.data)).serialization()
         for i in self.data:
@@ -168,11 +179,11 @@ class TAGArray(MCNBT):
 
     # noinspection DuplicatedCode
     @classmethod
-    def nbt_deserialization(cls, data: bytearray) -> tuple[list[int], int]:
-        length, offset = MCInt.obj_deserialization(data)
+    def _nbt_deserialization(cls, data: bytearray) -> tuple[list[int], int]:
+        length, offset = MCInt._obj_deserialization(data)
         result = []
         for i in range(length):
-            t = cls.tag_type.obj_deserialization(data[offset:])
+            t = cls.tag_type._obj_deserialization(data[offset:])
             result.append(t[0])
             offset += t[1]
         return result, offset
@@ -191,14 +202,14 @@ class TAGString(MCNBT):
     def __init__(self, name: str, data: str):
         super().__init__(name, data)
 
-    def nbt_serialization(self) -> bytearray:
+    def _nbt_serialization(self) -> bytearray:
         # [字符串字节数][mutf-8编码的字符串]
         data = encode_modified_utf8(self.data)
         return MCUnsignedShort(len(data)) + data
 
     @staticmethod
-    def nbt_deserialization(data: bytearray) -> tuple[str, int]:
-        length, l = MCUnsignedShort.obj_deserialization(data)
+    def _nbt_deserialization(data: bytearray) -> tuple[str, int]:
+        length, l = MCUnsignedShort._obj_deserialization(data)
         result = decode_modified_utf8(data[l:l + length])
         return result, length + l
 
@@ -210,7 +221,7 @@ class TAGList(MCNBT):
     def __init__(self, name: str, data: list[MCNBT]):
         super().__init__(name, data)
 
-    def nbt_serialization(self) -> bytearray:
+    def _nbt_serialization(self) -> bytearray:
         # [元素类型ID][元素个数]([元素负载][...])
         if len(self.data) == 0:
             # 第1个 0x00 表示列表元素ID(无符号Byte), 在列表为空时, 元素ID始终为 0x00
@@ -220,18 +231,18 @@ class TAGList(MCNBT):
         result += MCUnsignedByte(self.data[0].id)
         result += MCInt(len(self.data))
         for i in self.data:
-            result += i.nbt_serialization()
+            result += i._nbt_serialization()
         return result
 
     @staticmethod
-    def nbt_deserialization(data: bytearray) -> tuple[list, int]:
-        id, offset = MCUnsignedByte.obj_deserialization(data)
+    def _nbt_deserialization(data: bytearray) -> tuple[list, int]:
+        id, offset = MCUnsignedByte._obj_deserialization(data)
         tag = NBT_tag_id[id]
-        num, l = MCInt.obj_deserialization(data[offset:])
+        num, l = MCInt._obj_deserialization(data[offset:])
         offset += l
         result = []
         for i in range(num):
-            t = tag.nbt_deserialization(data[offset:])
+            t = tag._nbt_deserialization(data[offset:])
             result.append(tag("", t[0]))
             offset += t[1]
         return result, offset
@@ -244,7 +255,7 @@ class TAGCompound(MCNBT):
     def __init__(self, name: str, data: list[MCNBT]):
         super().__init__(name, data)
 
-    def nbt_serialization(self) -> bytearray:
+    def _nbt_serialization(self) -> bytearray:
         # ([元素][...])[结束标签]
         result = bytearray(b'')
         for i in self.data:
@@ -253,11 +264,11 @@ class TAGCompound(MCNBT):
         return result
 
     @staticmethod
-    def nbt_deserialization(data: bytearray) -> tuple[list, int]:
+    def _nbt_deserialization(data: bytearray) -> tuple[list, int]:
         result = []
         offset = 0
         while True:
-            (tag, name, r), l = MCNBT.obj_deserialization(data[offset:])
+            (tag, name, r), l = MCNBT._obj_deserialization(data[offset:])
             offset += l
             if tag == TAGEnd:
                 return result, offset

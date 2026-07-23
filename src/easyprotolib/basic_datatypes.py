@@ -24,17 +24,21 @@ class MCObject:
 
     def serialization(self) -> bytearray:
         if self.result is None:
-            self.result = self.obj_serialization()
+            self.result = self._obj_serialization()
         return self.result
 
-    def obj_serialization(self) -> bytearray: ...
+    def _obj_serialization(self) -> bytearray: ...
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[Any, int]: ...
+    def _obj_deserialization(data: bytearray) -> tuple[Any, int]: ...
 
     @classmethod
-    def deserialization(cls, data: bytearray) -> tuple[Any, int]:
-        return cls.obj_deserialization(data)
+    def deserialization(cls, data: bytearray | bytes) -> tuple[Any, int]:
+        return cls._obj_deserialization(data)
+
+    @staticmethod
+    def deserialization_to_mcobject(data: bytearray):
+        return MCObject(None), len(data)
 
     def __bytes__(self):
         return bytes(self.serialization())
@@ -68,14 +72,14 @@ class MCBoolean(MCObject):
         # True is encoded as 0x01, false as 0x00  -mcwiki
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         if self.data:
             return bytearray(b'\x01')
         else:
             return bytearray(b'\x00')
 
     @staticmethod
-    def obj_deserialization(data) -> tuple[bool, int]:
+    def _obj_deserialization(data) -> tuple[bool, int]:
         b = data[0]
         assert b in (0, 1)
         return b == 1, 1
@@ -92,11 +96,11 @@ class MCByte(MCObject):
         # Signed 8-bit integer, two's complement  -mcwiki
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return bytearray(self.data.to_bytes(1, byteorder='big', signed=True))
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[int, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[int, int]:
         return int.from_bytes(data[:1], byteorder='big', signed=True), 1
 
 
@@ -108,11 +112,11 @@ class MCUnsignedByte(MCObject):
         # Unsigned 8-bit integer  -mcwiki
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return bytearray(self.data.to_bytes(1, byteorder='big', signed=False))
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[int, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[int, int]:
         return int.from_bytes(data[:1], byteorder='big', signed=False), 1
 
 
@@ -124,11 +128,11 @@ class MCShort(MCObject):
         # Signed 16-bit integer, two's complement  -mcwiki
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return bytearray(self.data.to_bytes(2, byteorder='big', signed=True))
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[int, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[int, int]:
         return int.from_bytes(data[:2], byteorder='big', signed=True), 2
 
 
@@ -140,11 +144,11 @@ class MCUnsignedShort(MCObject):
         # Unsigned 16-bit integer  -mcwiki
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return bytearray(self.data.to_bytes(2, byteorder='big', signed=False))
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[int, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[int, int]:
         return int.from_bytes(data[:2], byteorder='big', signed=False), 2
 
 
@@ -156,11 +160,11 @@ class MCInt(MCObject):
         # Signed 32-bit integer, two's complement  -mcwiki
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return bytearray(self.data.to_bytes(4, byteorder='big', signed=True))
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[int, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[int, int]:
         return int.from_bytes(data[:4], byteorder='big', signed=True), 4
 
 
@@ -172,11 +176,11 @@ class MCLong(MCObject):
         # Signed 64-bit integer, two's complement  -mcwiki
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return bytearray(self.data.to_bytes(8, byteorder='big', signed=True))
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[int, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[int, int]:
         return int.from_bytes(data[:8], byteorder='big', signed=True), 8
 
 
@@ -188,11 +192,11 @@ class MCFloat(MCObject):
         # A single-precision 32-bit IEEE 754 floating point number  -mcwiki
         super().__init__(float(data))
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return bytearray(struct.pack('>f', self.data))
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[float, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[float, int]:
         return struct.unpack('>f', data[:4])[0], 4
 
 
@@ -204,11 +208,11 @@ class MCDouble(MCObject):
         # A double-precision 64-bit IEEE 754 floating point number  -mcwiki
         super().__init__(float(data))
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return bytearray(struct.pack('>d', self.data))
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[float, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[float, int]:
         return struct.unpack('>d', data[:8])[0], 8
 
 
@@ -220,12 +224,12 @@ class MCAngle(MCObject):
         # MC中, 角度占1字节, 1代表360/256°=45/32°=1.40625°
         super().__init__(data % 360)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return MCByte(_round(self.data * 0.71111) & 255).serialization()
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[float, int]:
-        return MCByte.obj_deserialization(data)[0] * 1.40625, 1
+    def _obj_deserialization(data: bytearray) -> tuple[float, int]:
+        return MCByte._obj_deserialization(data)[0] * 1.40625, 1
 
 
 class MCVarInt(MCObject):
@@ -234,7 +238,7 @@ class MCVarInt(MCObject):
         # 小端序, 最高位为1表示该字节后续还有数据, 最高位为0表示该字节为此VarInt最后1字节数据, 最长10字节
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         value = self.data
         value &= 0xFFFFFFFF
         result = bytearray()
@@ -245,7 +249,7 @@ class MCVarInt(MCObject):
         return result
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[int, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[int, int]:
         value = 0
         position = 0
         offset = 0
@@ -269,7 +273,7 @@ class MCVarLong(MCObject):
         # 小端序, 最高位为1表示该字节后续还有数据, 最高位为0表示该字节为此VarLong最后1字节数据, 最长10字节
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         value = self.data
         value &= 0xFFFFFFFFFFFFFFFF
         result = bytearray()
@@ -280,7 +284,7 @@ class MCVarLong(MCObject):
         return result
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[int, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[int, int]:
         value = 0
         position = 0
         offset = 0
@@ -304,13 +308,13 @@ class MCString(MCObject):
         # 序列化后为一个VarInt紧接着一个用UTF-8编码的字符串, VarInt为其后的字符串的字节数
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         data = self.data.encode("utf-8")
         return MCVarInt(len(data)) + bytearray(data)
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[str, int]:
-        str_len, varint_len = MCVarInt.obj_deserialization(data)
+    def _obj_deserialization(data: bytearray) -> tuple[str, int]:
+        str_len, varint_len = MCVarInt._obj_deserialization(data)
         text = data[varint_len: varint_len + str_len].decode("utf-8")
         return text, varint_len + str_len
 
@@ -354,8 +358,8 @@ class MCPosition(MCLong):
         super().__init__(data)
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[tuple[int, int, int], int]:
-        data, length = MCLong.obj_deserialization(data)
+    def _obj_deserialization(data: bytearray) -> tuple[tuple[int, int, int], int]:
+        data, length = MCLong._obj_deserialization(data)
         x = data >> 38
         y = data & ((1 << 12) - 1)
         z = data & ((1 << 38) - 1) >> 12
@@ -369,7 +373,7 @@ class MCLpVec3(MCObject):
     def __init__(self, x: float, y: float, z: float):
         super().__init__((x, y, z))
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         x, y, z = self.data
         max_abs = max(abs(x), abs(y), abs(z))
         if max_abs < 1.0 / 32766:
@@ -389,7 +393,7 @@ class MCLpVec3(MCObject):
         return result
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[tuple[float, float, float], int]:
+    def _obj_deserialization(data: bytearray) -> tuple[tuple[float, float, float], int]:
         offset = 0
         byte1 = data[offset]
         offset += 1
@@ -404,7 +408,7 @@ class MCLpVec3(MCObject):
         continuation = (packed & 0x04) != 0
         scale_high = 0
         if continuation:
-            scale_high, varint_len = MCVarInt.obj_deserialization(data[offset:])
+            scale_high, varint_len = MCVarInt._obj_deserialization(data[offset:])
             offset += varint_len
         scale_factor = scale_low | (scale_high << 2)
         packed_x = (packed >> 3) & 0x7FFF
@@ -435,11 +439,11 @@ class MCUUID(MCObject):
             raise ValueError("UUID 数据格式不正确")
         super().__init__(self.data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return bytearray(self.data.int.to_bytes(16, byteorder='big'))
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[uuid.UUID, int]:
+    def _obj_deserialization(data: bytearray) -> tuple[uuid.UUID, int]:
         if len(data) < 16:
             raise EOFError("数据长度不足以读取 16 字节的 UUID")
         return uuid.UUID(int=int.from_bytes(data[:16], byteorder='big')), 16
@@ -451,11 +455,11 @@ class MCBaseBytearray(MCObject):
             data = data.serialization()
         super().__init__(bytearray(data))
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return self.data
 
     @staticmethod
-    def obj_deserialization(data: bytearray, length: int=None) -> tuple[bytearray, int]:
+    def _obj_deserialization(data: bytearray, length: int=None) -> tuple[bytearray, int]:
         if length is None:
             return data, len(data)
         return data[:length], length
@@ -467,12 +471,12 @@ class MCVarBaseBytearray(MCObject):
             data = data.serialization()
         super().__init__(bytearray(data))
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         return MCVarInt(len(self.data)) + self.data
 
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[bytearray, int]:
-        length, offset = MCVarInt.obj_deserialization(data)
+    def _obj_deserialization(data: bytearray) -> tuple[bytearray, int]:
+        length, offset = MCVarInt._obj_deserialization(data)
         return data[offset:length+offset], length+offset
 
 
@@ -483,7 +487,7 @@ class MCObjectArray(MCObject):
     def __init__(self, data: list | tuple):
         super().__init__(data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         if len(self.data) == 0:
             return MCVarInt(0).serialization()
         if self.MCObjectType.length < 0:
@@ -511,11 +515,11 @@ class MCObjectArray(MCObject):
 
     # noinspection DuplicatedCode
     @classmethod
-    def obj_deserialization(cls, data: bytearray) -> tuple[Any, int]:
-        length, offset = MCVarInt.obj_deserialization(data)
+    def _obj_deserialization(cls, data: bytearray) -> tuple[Any, int]:
+        length, offset = MCVarInt._obj_deserialization(data)
         result = []
         for i in range(length):
-            t = cls.MCObjectType.obj_deserialization(data[offset:])
+            t = cls.MCObjectType._obj_deserialization(data[offset:])
             result.append(t[0])
             offset += t[1]
         return result, offset
@@ -528,7 +532,7 @@ class MCIdentifierArray(MCObjectArray):
 class MCLongArray(MCObjectArray):
     MCObjectType = MCLong
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         if len(self.data) == 0:
             return MCVarInt(0).serialization()
         result = MCVarInt(len(self.data)).serialization()
@@ -545,7 +549,7 @@ class MCLongArray(MCObjectArray):
 class MCUnsignedByteArray(MCObjectArray):
     MCObjectType = MCUnsignedByte
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         length = MCVarInt(len(self.data)).serialization()
         if isinstance(self.data[0], MCObject):
             data = (i.data for i in self.data)
@@ -562,7 +566,7 @@ class MCUnsignedByteArrayArray(MCObjectArray):
 class MCByteArray(MCObjectArray):
     MCObjectType = MCByte
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         length = MCVarInt(len(self.data)).serialization()
         if isinstance(self.data[0], MCObject):
             data = (i.data & 0xFF for i in self.data)
@@ -594,13 +598,13 @@ class MCDependentObject(MCObject):
     def judge_pyobject(condition) -> bool:
         return condition
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         if self.judge_mcobject(self.data[0]):
             return self.data[0] + self.data[1]
         return self.data[0].pack()
 
     @classmethod
-    def obj_deserialization(cls, data: bytearray) -> tuple[tuple, int]:
+    def _obj_deserialization(cls, data: bytearray) -> tuple[tuple, int]:
         condition, offset = cls.condition.deserialization(data)
         if not cls.judge_pyobject(condition):
             return (condition, None), offset
@@ -618,7 +622,7 @@ class MCStruct(MCObject):
     def characterization(a):
         return a.replace(" ", "").replace("\t", "").replace("_", "").replace("-", "").lower()
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         result = bytearray(b'')
         for field in self.fields:
             value = None
@@ -639,11 +643,11 @@ class MCStruct(MCObject):
         return result
 
     @classmethod
-    def obj_deserialization(cls, data: bytearray) -> tuple[dict, int]:
+    def _obj_deserialization(cls, data: bytearray) -> tuple[dict, int]:
         result = {}
         offset = 0
         for i in cls.fields:
-            r, length = i[1].obj_deserialization(data[offset:])
+            r, length = i[1]._obj_deserialization(data[offset:])
             result[i[0]] = r
             offset += length
         return result, offset

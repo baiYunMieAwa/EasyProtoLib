@@ -24,7 +24,7 @@ class MCCommandGraph(MCObject):
         new_data = sorted(setter(data)[0], key=lambda x: x[4])
         super().__init__(new_data)
 
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         data = self.data
         data: list[tuple[str, int, dict[str, str | dict], list, int]]
         num = data[-1][4]

@@ -77,11 +77,17 @@ class MCDataPacket:
     def unpack(config: MCConfig, data):
         if len(data) == 0:
             return None
-        length = MCVarInt.obj_deserialization(data)
+        try:
+            length = MCVarInt._obj_deserialization(data)
+        except EOFError:
+            return None
         if len(data) < length[0]+length[1]:
             return None
         # print(data[length[1]:length[0]+length[1]])
-        pid = MCVarInt.obj_deserialization(data[length[1]:])
+        try:
+            pid = MCVarInt._obj_deserialization(data[length[1]:])
+        except EOFError:
+            return None
         try:
             packet = MCDataPackets.get(config.state, pid[0], config.direction)
         except KeyError:
@@ -92,16 +98,16 @@ class MCDataPacket:
         try:
             result = packet(**packet().packet_unpack(data[length[1] + pid[1]:]))
         except Exception as e:
-            raise MCUnpackError(f"解析 {packet.__name__} 时发生错误! 数据包内容: {data[length[1] + pid[1]:]}, 错误: {e.__class__.__name__}: {e}")
+            raise MCUnpackError(f"解析 {packet.__name__} 时发生错误! 数据包内容: {data[length[1] + pid[1]:]}; 错误: {e.__class__.__name__}: {e}")
         result: MCDataPacket
         result.set_length(length[0] + length[1])
         return result
 
-    def packet_unpack(self, data):
+    def __packet_unpack(self, data):
         result = {}
         offset = 0
         for i in self.fields:
-            r, length = i[1].obj_deserialization(data[offset:])
+            r, length = i[1]._obj_deserialization(data[offset:])
             result[i[0]] = r
             offset += length
         return result
@@ -287,8 +293,8 @@ class MCCChunkDataAndUpdateLight(MCCPlayDataPacket):
         ("Z", MCInt, None),
         ("Heightmap", MCHeightMap, None),                   # 0~1ms
         ("Data", MCChunkData, None),                        # 300~360ms -> 140~180ms -> 80~110ms
-        ("BlockEntitiesCount", MCVarInt, MCVarInt(0)),
-        # 尚未实现实体方块字段, 所以实体方块数量始终为0
+        ("BlockEntities", MCBlockEntities, MCBlockEntities([])),
+        # 尚未实现实体方块字段, 所以实体方块数量始终为0      (归档)实体方块字段已于 2026/7/23 获得完整实现
         ("TrustEdges", MCBoolean, MCBoolean(True)),
         ("LightData", MCLightData, None)                    # 260~350ms -> 200~250ms -> 30~50ms
     ]
@@ -398,15 +404,15 @@ class MCSLoginPluginResponse(MCSLoginDataPacket):
     ]
     packet_id = 0x02
 
-    def packet_unpack(self, data):
+    def __packet_unpack(self, data):
         result = {}
         offset = 0
-        result["MessageID"], l = MCVarInt.obj_deserialization(data)
+        result["MessageID"], l = MCVarInt._obj_deserialization(data)
         offset += l
-        result["Successful"], l = MCBoolean.obj_deserialization(data[offset:])
+        result["Successful"], l = MCBoolean._obj_deserialization(data[offset:])
         offset += l
         if result["Successful"]:
-            result["Data"], l = MCBaseBytearray.obj_deserialization(data[offset:])
+            result["Data"], l = MCBaseBytearray._obj_deserialization(data[offset:])
         else:
             result["Data"] = ""
         return result
@@ -527,6 +533,7 @@ class MCSPongPlay(MCSPlayDataPacket):
 
     (3, 0x0E, 1): MCCServerDifficulty,
     (3, 0x0F, 1): MCCChatMessage,
+    (3, 0x12, 1): MCCDeclareCommands,
     (3, 0x18, 1): MCCPluginMessage,
     (3, 0x1A, 1): MCCDisconnectPlay,
     (3, 0x1D, 1): MCCUnloadChunk,
@@ -537,6 +544,7 @@ class MCSPongPlay(MCSPlayDataPacket):
     (3, 0x2D, 1): MCCOpenBook,
     (3, 0x30, 1): MCCPingPlay,
     (3, 0x48, 1): MCCHeldItemChange,
+    (3, 0x59, 1): MCCTimeUpdate,
 }'''
 # packets: dict[tuple[int, int, int], type[MCDataPacket] | None]
 # {(状态, 数据包ID, 数据包接收方): 数据包类, ...}
