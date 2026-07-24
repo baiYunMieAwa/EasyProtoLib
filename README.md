@@ -24,16 +24,16 @@ $ pip install easyprotolib
 > This library does not provide a network layer abstraction; it is only responsible for protocol construction and parsing.
 
 ```python
-import easyprotolib as ep    # Import EasyProtoLib
+import easyprotolib as ep  # Import EasyProtoLib
 
 packet = ep.MCSHandshake(
-  ProtocolVersion=ep.MCVarInt(758),       # Set protocol version (758 corresponds to 1.18.2)
-  ServerAddress=ep.MCString("127.0.0.1"), # Set server address (usually not used by vanilla server for verification)
-  ServerPort=ep.MCUnsignedShort(25565),   # Set server port
-  NextState=ep.MCVarInt(1)                # Set the next protocol state
+    ProtocolVersion=ep.MCVarInt(758),  # Set protocol version (758 corresponds to 1.18.2)
+    ServerAddress=ep.MCString("127.0.0.1"),  # Set server address (usually not used by vanilla server for verification)
+    ServerPort=ep.MCUnsignedShort(25565),  # Set server port
+    NextState=ep.MCVarInt(1)  # Set the next protocol state
 )
 
-data = packet.serialization()          # Serialize the packet, return the serialized result
+data = packet.pack()  # Serialize the packet, return the serialized result
 print(data)
 # You can send the packet using socket.socket().send(data)
 ```
@@ -41,17 +41,17 @@ print(data)
 The field names of a packet can be found in the `fields` class attribute within the packet class. Each item in `fields` contains the field name as the first element, the field type as the second, and the default value as the third; if the default is `None`, it means there is no default value. Field names are case‑insensitive and ignore spaces, underscores, and hyphens. Therefore, the following code is equivalent to the code above.
 
 ```python
-import easyprotolib as ep    # Import EasyProtoLib
+import easyprotolib as ep  # Import EasyProtoLib
 
 # A more Pythonic way of writing
 packet = ep.MCSHandshake(
-  protocol_version=ep.MCVarInt(758),        # Set protocol version (758 corresponds to 1.18.2)
-  server_address=ep.MCString("127.0.0.1"),  # Set server address (usually not used by vanilla server for verification)
-  # Server port uses default value MCUnsignedShort(25565)
-  next_state=ep.MCVarInt(1)                 # Set the next protocol state
+    protocol_version=ep.MCVarInt(758),  # Set protocol version (758 corresponds to 1.18.2)
+    server_address=ep.MCString("127.0.0.1"),  # Set server address (usually not used by vanilla server for verification)
+    # Server port uses default value MCUnsignedShort(25565)
+    next_state=ep.MCVarInt(1)  # Set the next protocol state
 )
 
-data = packet.serialization()               # Serialize the packet and return the serialized result
+data = packet.pack()  # Serialize the packet and return the serialized result
 print(data)
 # You can send the packet using socket.socket().send(data)
 ```
@@ -62,9 +62,10 @@ print(data)
 import easyprotolib as ep
 
 data = b'\x10\x00\xf6\x05\t127.0.0.1c\xdd\x01'
-config = ep.MCConfig(ep.STATE_HANDSHAKE, ep.IamS)  # Configure itself, ep.IamS indicates that this is the server side
+config = ep.MCConfig(ep.STATE_HANDSHAKE,
+                     ep.SIDE_SERVER)  # Configure itself, ep.SIDE_SERVER indicates that this is the server side
 
-packet = ep.MCDataPacket.deserialization(config, data)
+packet = ep.MCDataPacket.unpack(config, data)
 
 print(f"数据包ID: {packet.packet_id}")  # Packet ID: 0
 print(f"数据包类: {packet.__class__.__name__}")  # Packet class: MCSHandshake
@@ -173,16 +174,16 @@ $ pip install easyprotolib
 > 此协议库没有提供网络层抽象，仅负责协议构建和解析。
 
 ```python
-import easyprotolib as ep    # 导入 EasyProtoLib
+import easyprotolib as ep  # 导入 EasyProtoLib
 
 packet = ep.MCSHandshake(
-  ProtocolVersion=ep.MCVarInt(758),       # 设置协议号(758对应1.18.2)
-  ServerAddress=ep.MCString("127.0.0.1"), # 设置服务器地址(通常不被原版服务器用于验证)
-  ServerPort=ep.MCUnsignedShort(25565),   # 设置服务器端口
-  NextState=ep.MCVarInt(1)                # 设置下一个协议状态
+    ProtocolVersion=ep.MCVarInt(758),  # 设置协议号(758对应1.18.2)
+    ServerAddress=ep.MCString("127.0.0.1"),  # 设置服务器地址(通常不被原版服务器用于验证)
+    ServerPort=ep.MCUnsignedShort(25565),  # 设置服务器端口
+    NextState=ep.MCVarInt(1)  # 设置下一个协议状态
 )
 
-data = packet.serialization()          # 序列化数据包，返回序列化结果
+data = packet.pack()  # 序列化数据包，返回序列化结果
 print(data)
 # 可使用 socket.socket().send(data) 发送数据包
 ```
@@ -190,17 +191,17 @@ print(data)
 数据包的字段名可以在数据包类中的 `fields` 类属性中找到。`fields` 每一项的第一项是字段名，第二项是字段类型，第三项是默认值，如为 `None` 则代表无默认值。字段名忽略大小写，忽略空格、下划线和连字符。所以以下代码和以上代码等价：
 
 ```python
-import easyprotolib as ep    # 导入 EasyProtoLib
+import easyprotolib as ep  # 导入 EasyProtoLib
 
 # 更符合Python编码习惯的写法
 packet = ep.MCSHandshake(
-  protocol_version=ep.MCVarInt(758),        # 设置协议号(758对应1.18.2)
-  server_address=ep.MCString("127.0.0.1"),  # 设置服务器地址(通常不被原版服务器用于验证)
-  # 服务器端口使用默认值 MCUnsignedShort(25565)
-  next_state=ep.MCVarInt(1)                 # 设置下一个协议状态
+    protocol_version=ep.MCVarInt(758),  # 设置协议号(758对应1.18.2)
+    server_address=ep.MCString("127.0.0.1"),  # 设置服务器地址(通常不被原版服务器用于验证)
+    # 服务器端口使用默认值 MCUnsignedShort(25565)
+    next_state=ep.MCVarInt(1)  # 设置下一个协议状态
 )
 
-data = packet.serialization()               # 序列化数据包，返回序列化结果
+data = packet.pack()  # 序列化数据包，返回序列化结果
 print(data)
 # 可使用 socket.socket().send(data) 发送数据包
 ```
@@ -211,9 +212,9 @@ print(data)
 import easyprotolib as ep
 
 data = b'\x10\x00\xf6\x05\t127.0.0.1c\xdd\x01'
-config = ep.MCConfig(ep.STATE_HANDSHAKE, ep.IamS)  # 配置自己, ep.IamS 表示自己是服务端
+config = ep.MCConfig(ep.STATE_HANDSHAKE, ep.SIDE_SERVER)  # 配置自己, ep.SIDE_SERVER 表示自己是服务端
 
-packet = ep.MCDataPacket.deserialization(config, data)
+packet = ep.MCDataPacket.unpack(config, data)
 
 print(f"数据包ID: {packet.packet_id}")  # 数据包ID: 0
 print(f"数据包类: {packet.__class__.__name__}")  # 数据包类: MCSHandshake
