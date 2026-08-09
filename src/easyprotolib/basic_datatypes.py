@@ -22,12 +22,12 @@ class MCObject:
         self.data = data
         self.result = None
 
-    def serialization(self) -> bytearray:
+    def serialization(self) -> bytearray | bytes:
         if self.result is None:
             self.result = self._obj_serialization()
         return self.result
 
-    def _obj_serialization(self) -> bytearray: ...
+    def _obj_serialization(self) -> bytearray | bytes: ...
 
     @staticmethod
     def _obj_deserialization(data: bytearray) -> tuple[Any, int]: ...
@@ -35,10 +35,6 @@ class MCObject:
     @classmethod
     def deserialization(cls, data: bytearray | bytes) -> tuple[Any, int]:
         return cls._obj_deserialization(data)
-
-    @staticmethod
-    def deserialization_to_mcobject(data: bytearray):
-        return MCObject(None), len(data)
 
     def __bytes__(self):
         return bytes(self.serialization())
@@ -96,8 +92,8 @@ class MCByte(MCObject):
         # Signed 8-bit integer, two's complement  -mcwiki
         super().__init__(data)
 
-    def _obj_serialization(self) -> bytearray:
-        return bytearray(self.data.to_bytes(1, byteorder='big', signed=True))
+    def _obj_serialization(self) -> bytes:
+        return self.data.to_bytes(1, byteorder='big', signed=True)
 
     @staticmethod
     def _obj_deserialization(data: bytearray) -> tuple[int, int]:
@@ -112,12 +108,12 @@ class MCUnsignedByte(MCObject):
         # Unsigned 8-bit integer  -mcwiki
         super().__init__(data)
 
-    def _obj_serialization(self) -> bytearray:
-        return bytearray(self.data.to_bytes(1, byteorder='big', signed=False))
+    def _obj_serialization(self) -> bytes:
+        return self.data.to_bytes(1, byteorder='big', signed=False)
 
     @staticmethod
     def _obj_deserialization(data: bytearray) -> tuple[int, int]:
-        return int.from_bytes(data[:1], byteorder='big', signed=False), 1
+        return data[0], 1
 
 
 class MCShort(MCObject):
@@ -128,8 +124,8 @@ class MCShort(MCObject):
         # Signed 16-bit integer, two's complement  -mcwiki
         super().__init__(data)
 
-    def _obj_serialization(self) -> bytearray:
-        return bytearray(self.data.to_bytes(2, byteorder='big', signed=True))
+    def _obj_serialization(self) -> bytes:
+        return self.data.to_bytes(2, byteorder='big', signed=True)
 
     @staticmethod
     def _obj_deserialization(data: bytearray) -> tuple[int, int]:
@@ -144,8 +140,8 @@ class MCUnsignedShort(MCObject):
         # Unsigned 16-bit integer  -mcwiki
         super().__init__(data)
 
-    def _obj_serialization(self) -> bytearray:
-        return bytearray(self.data.to_bytes(2, byteorder='big', signed=False))
+    def _obj_serialization(self) -> bytes:
+        return self.data.to_bytes(2, byteorder='big', signed=False)
 
     @staticmethod
     def _obj_deserialization(data: bytearray) -> tuple[int, int]:
@@ -160,8 +156,8 @@ class MCInt(MCObject):
         # Signed 32-bit integer, two's complement  -mcwiki
         super().__init__(data)
 
-    def _obj_serialization(self) -> bytearray:
-        return bytearray(self.data.to_bytes(4, byteorder='big', signed=True))
+    def _obj_serialization(self) -> bytes:
+        return self.data.to_bytes(4, byteorder='big', signed=True)
 
     @staticmethod
     def _obj_deserialization(data: bytearray) -> tuple[int, int]:
@@ -176,8 +172,12 @@ class MCLong(MCObject):
         # Signed 64-bit integer, two's complement  -mcwiki
         super().__init__(data)
 
-    def _obj_serialization(self) -> bytearray:
-        return bytearray(self.data.to_bytes(8, byteorder='big', signed=True))
+    def _obj_serialization(self) -> bytes:
+        try:
+            return self.data.to_bytes(8, byteorder='big', signed=True)
+        except Exception as e:
+            print(self.data)
+            raise e
 
     @staticmethod
     def _obj_deserialization(data: bytearray) -> tuple[int, int]:
@@ -187,33 +187,35 @@ class MCLong(MCObject):
 class MCFloat(MCObject):
     """MC数据类型 单精度浮点数"""
     length = 4
+    __struct = struct.Struct(">f")
 
     def __init__(self, data: int | float):
         # A single-precision 32-bit IEEE 754 floating point number  -mcwiki
         super().__init__(float(data))
 
-    def _obj_serialization(self) -> bytearray:
-        return bytearray(struct.pack('>f', self.data))
+    def _obj_serialization(self) -> bytes:
+        return self.__struct.pack(self.data)
 
-    @staticmethod
-    def _obj_deserialization(data: bytearray) -> tuple[float, int]:
-        return struct.unpack('>f', data[:4])[0], 4
+    @classmethod
+    def _obj_deserialization(cls, data: bytearray) -> tuple[float, int]:
+        return cls.__struct.unpack(data[:4])[0], 4
 
 
 class MCDouble(MCObject):
     """MC数据类型 双精度浮点数"""
     length = 8
+    __struct = struct.Struct(">d")
 
     def __init__(self, data: int | float):
         # A double-precision 64-bit IEEE 754 floating point number  -mcwiki
         super().__init__(float(data))
 
-    def _obj_serialization(self) -> bytearray:
-        return bytearray(struct.pack('>d', self.data))
+    def _obj_serialization(self) -> bytes:
+        return self.__struct.pack(self.data)
 
-    @staticmethod
-    def _obj_deserialization(data: bytearray) -> tuple[float, int]:
-        return struct.unpack('>d', data[:8])[0], 8
+    @classmethod
+    def _obj_deserialization(cls, data: bytearray) -> tuple[float, int]:
+        return cls.__struct.unpack(data[:8])[0], 8
 
 
 class MCAngle(MCObject):
@@ -224,8 +226,8 @@ class MCAngle(MCObject):
         # MC中, 角度占1字节, 1代表360/256°=45/32°=1.40625°
         super().__init__(data % 360)
 
-    def _obj_serialization(self) -> bytearray:
-        return MCByte(_round(self.data * 0.71111) & 255).serialization()
+    def _obj_serialization(self) -> bytes:
+        return MCByte(_round(self.data / 1.40625) & 0xff).serialization()
 
     @staticmethod
     def _obj_deserialization(data: bytearray) -> tuple[float, int]:
@@ -653,14 +655,15 @@ class MCStruct(MCObject):
         return result, offset
 
 
-def MCObjectSetter(mc_object: type[MCObject], new_name: str="", **kwargs):
+# noinspection PyTypeChecker
+def MCObjectSetter(mc_object: type[MCObject], new_name: str="", **kwargs) -> type[MCObject]:
     if new_name == "":
         new_name = f"__McObjectSetter_{uuid.uuid4().int}_{mc_object.__name__}"
     kwargs["__MCObjectSetter__"] = True
     return type(new_name, (mc_object, ), kwargs)
 
 
-def MCObjectDuplicator(mc_object: type[MCObject], obj: MCObject):
+def MCObjectDuplicator(mc_object: type[MCObject], obj: MCObject) -> MCObject:
     result = mc_object.__new__(mc_object)
     if hasattr(obj, "__dict__"):
         result.__dict__.update(vars(obj))

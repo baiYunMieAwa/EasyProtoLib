@@ -39,11 +39,6 @@ class MCNBT(MCObject):
     @staticmethod
     def _nbt_deserialization(data: bytearray) -> tuple[..., int]: ...
 
-    @classmethod
-    def deserialization_to_mcobject(cls, data: bytearray) -> tuple[..., int]:
-        (tag, name, result), offset = cls._obj_deserialization(data)
-        return tag(name, result), offset
-
     def __str__(self):
         if type(self.data) != str:
             return f"{type(self).__name__}('{self.name}', {self.data})"
@@ -67,12 +62,6 @@ class TAGEnd(MCNBT):
     def _obj_deserialization(data: bytearray) -> tuple[tuple[type[MCNBT], str, None], int]:
         if data[0] == 0:
             return (TAGEnd, "", None), 1
-        raise ValueError("data 的 id 不是 0x00, 却尝试解码为 TAGEnd 标签")
-
-    @classmethod
-    def deserialization_to_mcobject(cls, data: bytearray) -> tuple[MCNBT, int]:
-        if data[0] == 0:
-            return TAGEnd(), 1
         raise ValueError("data 的 id 不是 0x00, 却尝试解码为 TAGEnd 标签")
 
 

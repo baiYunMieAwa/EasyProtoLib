@@ -21,6 +21,9 @@ from .basic_datatypes import MCIdentifierArray
 from .basic_datatypes import MCUnsignedByteArrayArray
 
 from .basic_datatypes import MCBaseBytearray, MCVarBaseBytearray
+from .basic_datatypes import MCDependentObject, MCStruct
+
+from .basic_datatypes import MCObjectSetter, MCObjectDuplicator
 
 
 from .nbt import MCNBT, TAGArray
@@ -81,8 +84,3 @@ from .command import (MCCommandLiteralNode, MCCommandArgumentNode, MCCommandIsEx
 
 
 from .err import MinecraftException, MCProtocolIdNotFound
-
-
-if debug:
-    # 开发中/不稳定的api
-    from .basic_datatypes import MCDependentObject

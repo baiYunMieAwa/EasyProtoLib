@@ -50,6 +50,14 @@ class MCDataPacket:
     def characterization(a):
         return a.replace(" ", "").replace("\t", "").replace("_", "").replace("-", "").lower()
 
+    @classmethod
+    def set_characterization(cls, func):
+        cls.characterization = func
+
+    @classmethod
+    def disable_characterization(cls):
+        cls.characterization = lambda x: x
+
     def pack(self) -> bytes:
         result = bytearray(b'')
         for field in self.fields:
@@ -65,7 +73,7 @@ class MCDataPacket:
                 raise ValueError("字段不完整")
             elif not isinstance(value, field[1]):
                 raise TypeError(f"字段 {field[0]} 类型有误: 预期 {field[1].__name__}, 实际 {value.__name__}")
-            if hasattr(field[1], "__MCObjectSetter__") and field[1].__MCObjectSetter__:
+            if field[1].__MCObjectSetter__:
                 value = MCObjectDuplicator(field[1], value)
             result += value
         packet_id = MCVarInt(self.packet_id).serialization()
@@ -81,7 +89,7 @@ class MCDataPacket:
             length = MCVarInt._obj_deserialization(data)
         except EOFError:
             return None
-        if len(data) < length[0]+length[1]:
+        if len(data) < length[0] + length[1]:
             return None
         # print(data[length[1]:length[0]+length[1]])
         try:
@@ -96,24 +104,20 @@ class MCDataPacket:
                 f"方向: {("Client -> Server", "Server -> Client")[config.direction]}; 状态: {config.state}; 包ID: {hex(pid[0])}. "
                 f"数据包内容: {data[length[1] + pid[1]:]}")
         try:
-            result = packet(**packet().packet_unpack(data[length[1] + pid[1]:]))
+            result = packet._packet_unpack(data[length[1] + pid[1]:])
         except Exception as e:
             raise MCUnpackError(f"解析 {packet.__name__} 时发生错误! 数据包内容: {data[length[1] + pid[1]:]}; 错误: {e.__class__.__name__}: {e}")
-        result: MCDataPacket
-        result.set_length(length[0] + length[1])
-        return result
+        return {"packet": packet, "length": length[0] + length[1], "result": result, "pid": packet.packet_id}
 
-    def __packet_unpack(self, data):
+    @classmethod
+    def _packet_unpack(cls, data):
         result = {}
         offset = 0
-        for i in self.fields:
-            r, length = i[1]._obj_deserialization(data[offset:])
+        for i in cls.fields:
+            r, length = i[1].deserialization(data[offset:])
             result[i[0]] = r
             offset += length
         return result
-
-    def set_length(self, length):
-        self.length = length
 
     @classmethod
     def __init_subclass__(cls, **kwargs):
@@ -292,14 +296,41 @@ class MCCChunkDataAndUpdateLight(MCCPlayDataPacket):
         ("X", MCInt, None),
         ("Z", MCInt, None),
         ("Heightmap", MCHeightMap, None),                   # 0~1ms
-        ("Data", MCChunkData, None),                        # 300~360ms -> 140~180ms -> 80~110ms
+        ("Data", MCChunkData, None),                        # 300~360ms -> 140~180ms -> 80~110ms -> 2ms
         ("BlockEntities", MCBlockEntities, MCBlockEntities([])),
         # 尚未实现实体方块字段, 所以实体方块数量始终为0      (归档)实体方块字段已于 2026/7/23 获得完整实现
         ("TrustEdges", MCBoolean, MCBoolean(True)),
-        ("LightData", MCLightData, None)                    # 260~350ms -> 200~250ms -> 30~50ms
+        ("LightData", MCLightData, None)                    # 260~350ms -> 200~250ms -> 30~50ms -> 13~15ms
     ]
     packet_id = 0x22
-    # 500~600ms -> 460~540ms -> 400~440ms -> [0~1ms] -> 100~130ms
+    get_heightmap_class = lambda: None
+    # 500~600ms -> 460~540ms -> 400~440ms -> [0~1ms] -> 100~130ms -> 15ms~17ms
+
+    @classmethod
+    def _packet_unpack(cls, data):
+        # noinspection PyNoneFunctionAssignment
+        heightmap = cls.get_heightmap_class()
+        if heightmap is None:
+            raise ValueError("请为 `MCCChunkDataAndUpdateLight` 设置正确的 `get_heightmap_class` 方法")
+        result = {}
+        result["X"], offset = MCInt.deserialization(data)
+        result["Z"], l = MCInt.deserialization(data[offset:])
+        offset += l
+        # noinspection PyUnresolvedReferences
+        result["Heightmap"], l = heightmap.deserialization(data[offset:])
+        offset += l
+        result["Data"], l = MCChunkData.deserialization(data[offset:])
+        offset += l
+        result["BlockEntities"], l = MCBlockEntities.deserialization(data[offset:])
+        offset += l
+        result["TrustEdges"], l = MCBoolean.deserialization(data[offset:])
+        offset += l
+        result["LightData"] = MCLightData.deserialization(data[offset:])[0]
+        return result
+
+    @classmethod
+    def set_get_heightmap_class_function(cls, func):
+        cls.get_heightmap_class = func
 
 
 class MCCUpdateLight(MCCPlayDataPacket):
@@ -404,17 +435,18 @@ class MCSLoginPluginResponse(MCSLoginDataPacket):
     ]
     packet_id = 0x02
 
-    def __packet_unpack(self, data):
+    @classmethod
+    def _packet_unpack(cls, data):
         result = {}
         offset = 0
-        result["MessageID"], l = MCVarInt._obj_deserialization(data)
+        result["MessageID"], l = MCVarInt.deserialization(data)
         offset += l
-        result["Successful"], l = MCBoolean._obj_deserialization(data[offset:])
+        result["Successful"], l = MCBoolean.deserialization(data[offset:])
         offset += l
         if result["Successful"]:
-            result["Data"], l = MCBaseBytearray._obj_deserialization(data[offset:])
+            result["Data"], l = MCBaseBytearray.deserialization(data[offset:])
         else:
-            result["Data"] = ""
+            result["Data"] = MCBaseBytearray(b'')
         return result
 
 

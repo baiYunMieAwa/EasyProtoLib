@@ -22,7 +22,7 @@ mc_int_tests = load_test_cases("mc_int_cases.py")
 mc_long_tests = load_test_cases("mc_long_cases.py")
 
 
-def _test_MCObject(mc_object: type[ep.MCObject], data: ..., expected: bytearray):
+def _test_MCObject(mc_object: type[ep.MCObject], data, expected: bytearray):
     actual = mc_object(data).serialization()
     parsed_data = mc_object.deserialization(actual)
 

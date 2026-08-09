@@ -5,10 +5,8 @@ EasyProtoLib
 
 ## English
 
-The English version of the README was translated using AI, which may result in inaccuracies. If you have any questions, please provide feedback in the Issues.
-
 ### Description
-This is a `Minecraft` protocol library written in Python, currently supporting only MC JE 1.18.2.
+This is a Minecraft protocol library written in `Python`, with lightweight and ease of use as its primary goals, and high performance **within pure Python** as a secondary goal. Currently, it only supports MCJE 1.18.2. Due to the author's academic commitments, this library is currently in a **semi-hibernation** state. Please use it with caution.
 
 ### Quick Start
 
@@ -16,86 +14,85 @@ This is a `Minecraft` protocol library written in Python, currently supporting o
 
 Install this protocol library using `pip`:
 ```console
-$ pip install easyprotolib
+python -m pip install easyprotolib
 ```
 
-#### Sending Your First Packet
+#### Build Your First Packet
 
-> This library does not provide a network layer abstraction; it is only responsible for protocol construction and parsing.
+> This protocol library does not provide a network layer abstraction; it is only responsible for protocol construction and parsing.
 
 ```python
 import easyprotolib as ep  # Import EasyProtoLib
 
 packet = ep.MCSHandshake(
     ProtocolVersion=ep.MCVarInt(758),  # Set protocol version (758 corresponds to 1.18.2)
-    ServerAddress=ep.MCString("127.0.0.1"),  # Set server address (usually not used by vanilla server for verification)
+    ServerAddress=ep.MCString("127.0.0.1"),  # Set server address (not normally validated by vanilla servers)
     ServerPort=ep.MCUnsignedShort(25565),  # Set server port
-    NextState=ep.MCVarInt(1)  # Set the next protocol state
+    NextState=ep.MCVarInt(1)  # Set next protocol state
 )
 
-data = packet.pack()  # Serialize the packet, return the serialized result
+data = packet.pack()  # Serialize the packet, return serialized result
 print(data)
-# You can send the packet using socket.socket().send(data)
+# Can use socket.socket().send(data) to send the packet
 ```
 
-The field names of a packet can be found in the `fields` class attribute within the packet class. Each item in `fields` contains the field name as the first element, the field type as the second, and the default value as the third; if the default is `None`, it means there is no default value. Field names are case‑insensitive and ignore spaces, underscores, and hyphens. Therefore, the following code is equivalent to the code above.
+The field names of a packet can be found in the `fields` class attribute of the packet class. Each item in `fields` contains the field name as the first element, the field type as the second, and the default value as the third; if `None`, it means no default value. Field names are case‑insensitive and ignore spaces, underscores, and hyphens. Therefore, the following code is equivalent to the one above:
 
 ```python
 import easyprotolib as ep  # Import EasyProtoLib
 
-# A more Pythonic way of writing
+# A more Pythonic style
 packet = ep.MCSHandshake(
     protocol_version=ep.MCVarInt(758),  # Set protocol version (758 corresponds to 1.18.2)
-    server_address=ep.MCString("127.0.0.1"),  # Set server address (usually not used by vanilla server for verification)
-    # Server port uses default value MCUnsignedShort(25565)
-    next_state=ep.MCVarInt(1)  # Set the next protocol state
+    server_address=ep.MCString("127.0.0.1"),  # Set server address (not normally validated by vanilla servers)
+    # Server port uses default MCUnsignedShort(25565)
+    next_state=ep.MCVarInt(1)  # Set next protocol state
 )
 
-data = packet.pack()  # Serialize the packet and return the serialized result
+data = packet.pack()  # Serialize the packet, return serialized result
 print(data)
-# You can send the packet using socket.socket().send(data)
+# Can use socket.socket().send(data) to send the packet
 ```
 
-#### Parsing Packets
+#### Parse a Packet
 
 ```python
 import easyprotolib as ep
 
 data = b'\x10\x00\xf6\x05\t127.0.0.1c\xdd\x01'
-config = ep.MCConfig(ep.STATE_HANDSHAKE,
-                     ep.SIDE_SERVER)  # Configure itself, ep.SIDE_SERVER indicates that this is the server side
+config = ep.MCConfig(ep.STATE_HANDSHAKE, ep.SIDE_SERVER)  # Configure yourself; ep.SIDE_SERVER means you are the server side
 
 packet = ep.MCDataPacket.unpack(config, data)
 
-print(f"数据包ID: {packet.packet_id}")  # Packet ID: 0
-print(f"数据包类: {packet.__class__.__name__}")  # Packet class: MCSHandshake
-print(f"数据包数据: {packet.data}")  # Packet data: {'ProtocolVersion': 758, ...}
-print(f"数据包长度: {packet.length}")  # Packet length: 17
-print(f"下一段数据: {data[packet.length:]}")  # Remaining data: b''
-# You can call MCDataPacket.deserialization() in a loop until it returns None, which means the remaining data cannot form a complete packet
+print(f"Packet ID: {packet.packet_id}")  # Packet ID: 0
+print(f"Packet class: {packet.__class__.__name__}")  # Packet class: MCSHandshake
+print(f"Packet data: {packet.data}")  # Packet data: {'ProtocolVersion': 758, ...}
+print(f"Packet length: {packet.length}")  # Packet length: 17
+print(f"Remaining data: {data[packet.length:]}")  # Remaining data: b''
+# You can repeatedly call MCDataPacket.deserialization() until it returns None, meaning the remaining data is not enough to form a complete packet.
 ```
 
-#### Custom Packets
+#### Custom Packet
 
 ```python
 import easyprotolib as ep
 
-# Library naming convention: MC + receiver side (C/S) + packet name + the State it belongs to (optional, used for disambiguation)
-class MCSMyDataPacket(ep.MCSPlayDataPacket):    # Data packet received and processed by the server (MCS) in the Play state
+# Library naming convention: MC + receiving side (C/S) + packet name + (optional) State for disambiguation
+class MCSMyDataPacket(ep.MCSPlayDataPacket):    # A packet received and processed by the server (MCS) in the Play state
     fields = [
-        # Field name: IntField; Field type: VarInt; Default value: None
+        # Field name: IntField;    Field type: VarInt;   Default: None
         ("IntField", ep.MCVarInt, None),
-        # Field name: StringField; Field type: MCString; Default value: ep.MCString("Hello world")
+        # Field name: StringField; Field type: MCString; Default: ep.MCString("Hello world")
         ("StringField", ep.MCString, ep.MCString("Hello world"))
     ]
     packet_id = 0xFF    # Packet ID: 0xff
 
-# Afterwards, you can build or parse this packet just like a native packet, without any additional handling
+# You can then construct or parse this packet just like a native packet, without any additional handling.
 ```
 
 #### Custom Data Types
 
-**Custom Atomic Data Types**
+**Custom Atomic Data Type**
 ```python
 import easyprotolib as ep
 
@@ -103,62 +100,52 @@ class MCMyObject(ep.MCObject):
     def __init__(self, data: tuple[str, int]):
         super().__init__(data)      # Automatically registers self.data
     
-    def obj_serialization(self) -> bytearray:
-        # Write the serialization method, do not override the serialization() method
-        return ep.MCString(self.data[0]) + ep.MCVarInt(self.data[1])    # No need to explicitly call MCObject's serialization method; addition will automatically serialize
+    def _obj_serialization(self) -> bytearray:
+        # Implement serialization; do not override serialization()
+        return ep.MCString(self.data[0]) + ep.MCVarInt(self.data[1])    # No need to explicitly call MCObject's serialization; addition automatically serializes
     
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[tuple[str, int], int]:
-        # Write the deserialization method (static)
+    def _obj_deserialization(data: bytearray) -> tuple[tuple[str, int], int]:
+        # Implement deserialization (static)
         string, offset = ep.MCString.deserialization(data)
         varint, offset2 = ep.MCVarInt.deserialization(data[offset:])
-        # Return value: tuple[actual payload, length of processed byte stream]
+        # Return value: tuple[actual payload, number of bytes processed]
         return (string, varint), offset + offset2
 
-# Afterwards, you can use this data type normally
+# You can then use this data type normally.
 ```
 
-**Custom Array Types**
+**Custom Array Type**
 ```python
 import easyprotolib as ep
 
-class MCIntArray(ep.MCObjectArray):
-    MCObjectType = ep.MCInt     # Specify the element type of this array
+class MCIntArray(ep.MCObjectArray):         # Defines a 1D array of MCInt
+    MCObjectType = ep.MCInt     # Specify the element type
 
-# Afterwards, you can use this array normally
+# You can then use this array normally.
 
-class MCIntArrayArray(ep.MCObjectArray):    # Define a two-dimensional MCInt array
-    MCObjectType = MCIntArray   # Specify the corresponding one-dimensional array type; for multi-dimensional arrays, follow the same pattern
+class MCIntArrayArray(ep.MCObjectArray):    # Defines a 2D array of MCInt
+    MCObjectType = MCIntArray   # Specify the corresponding 1D array type; similarly for higher dimensions
+
+# You can then use this array normally.
 ```
 
-#### Simple Server Implementation
+### Third‑Party Library Copyright Information
+| Name   | Version  | License |
+|--------|----------|---------|
+| mutf8  | >=1.0.0  | MIT     |
 
-```python
-# Not yet completed
-```
-
-#### Simple Client Implementation
-
-```python
-# Not yet completed
-```
-
-### Third-Party Library Copyright Information
-| Name  |   Version   |  License  |
-|-------|-------------|-----------|
-| mutf8 | >=1.0.0     | MIT       |
-
-For complete information, see `THIRD-PARTY.json`.
+For full details, see `THIRD-PARTY.json`.
 
 ### Disclaimer
-The authors and contributors of this project are not responsible for any consequences arising from the use of this project. The authors and contributors firmly oppose any illegal activities carried out based on this project, such as attacking servers.
+The authors and contributors of this library are not responsible for any consequences arising from the use of this library. The authors and contributors firmly oppose any illegal activities carried out based on this project, such as attacking servers.
 
 ---
 
 ## 中文
 
 ### 描述
-这是一个使用Python编写的 `Minecraft` 协议库，目前仅适用于MC JE 1.18.2。
+这是一个使用 `Python` 编写的 Minecraft 协议库，以轻量、易用为主要目标，以**在纯Python范围内**的高性能为次要目标，目前仅支持MCJE 1.18.2。由于作者学业问题，本库目前处于**半停更**状态。请谨慎使用本库。
 
 ### 快速开始
 
@@ -166,7 +153,7 @@ The authors and contributors of this project are not responsible for any consequ
 
 使用 `pip` 安装此协议库：
 ```console
-$ pip install easyprotolib
+python -m pip install easyprotolib
 ```
 
 #### 构建你的第一个数据包
@@ -252,12 +239,12 @@ class MCMyObject(ep.MCObject):
     def __init__(self, data: tuple[str, int]):
         super().__init__(data)      # 自动注册 self.data
     
-    def obj_serialization(self) -> bytearray:
+    def _obj_serialization(self) -> bytearray:
         # 编写序列化方法, 请不要重写 serialization() 方法
         return ep.MCString(self.data[0]) + ep.MCVarInt(self.data[1])    # 无需显式调用 MCObject 的序列化方法, 相加时会自动序列化
     
     @staticmethod
-    def obj_deserialization(data: bytearray) -> tuple[tuple[str, int], int]:
+    def _obj_deserialization(data: bytearray) -> tuple[tuple[str, int], int]:
         # 编写反序列化方法(静态)
         string, offset = ep.MCString.deserialization(data)
         varint, offset2 = ep.MCVarInt.deserialization(data[offset:])
@@ -271,26 +258,15 @@ class MCMyObject(ep.MCObject):
 ```python
 import easyprotolib as ep
 
-class MCIntArray(ep.MCObjectArray):
+class MCIntArray(ep.MCObjectArray):         # 定义一维 MCInt 数组
     MCObjectType = ep.MCInt     # 写上该数组的元素类型
 
 # 随后可正常使用该数组
 
 class MCIntArrayArray(ep.MCObjectArray):    # 定义二维 MCInt 数组
-    MCObjectType = MCIntArray   # 写上对应的一维数组的类型, 多维数组以此类推
+    MCObjectType = MCIntArray   # 写上对应的一维数组的类型即可, 多维数组以此类推
 
-```
-
-#### 简单的服务端实现
-
-```python
-# 尚未完成
-```
-
-#### 简单的客户端实现
-
-```python
-# 尚未完成
+# 随后可正常使用该数组
 ```
 
 ### 第三方库版权信息
@@ -301,4 +277,4 @@ class MCIntArrayArray(ep.MCObjectArray):    # 定义二维 MCInt 数组
 完整信息参见 `THIRD-PARTY.json` 。
 
 ### 免责声明
-本项目的作者和贡献者不对因使用本项目而产生的任何后果负责。作者和贡献者坚决反对任何基于本项目实施的非法活动，例如攻击服务器。
+本库的作者和贡献者不对因使用本库而产生的任何后果负责。作者和贡献者坚决反对任何基于本项目实施的非法活动，例如攻击服务器。
