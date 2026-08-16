@@ -147,6 +147,9 @@ The authors and contributors of this library are not responsible for any consequ
 
 ## 中文
 
+#### 警告
+> 此库部分功能未经充分测试；本库正处于积极开发状态；本库正处于半停更状态。请不要在生产环境中使用本库。
+
 ### 描述
 这是一个使用 `Python` 编写的 Minecraft 协议库，以轻量、易用为主要目标，以**在纯Python范围内**的高性能为次要目标，目前仅支持MCJE 1.18.2。由于作者学业问题，本库目前处于**半停更**状态。请谨慎使用本库。
 
