@@ -5,6 +5,9 @@ EasyProtoLib
 
 ## English
 
+#### Warning
+> Some features of this library have not been fully tested; this library is under active development; this library is in a semi-maintenance mode. Please do not use this library in production environments.
+
 ### Description
 This is a Minecraft protocol library written in `Python`, with lightweight and ease of use as its primary goals, and high performance **within pure Python** as a secondary goal. Currently, it only supports MCJE 1.18.2. Due to the author's academic commitments, this library is currently in a **semi-hibernation** state. Please use it with caution.
 
