@@ -1,0 +1,10 @@
+include THIRD-PARTY.json
+
+recursive-include tests *
+recursive-include benchmarks *
+
+prune __pycache__
+prune .idea
+prune .pytest_cache
+prune .venv
+global-exclude *.pyc

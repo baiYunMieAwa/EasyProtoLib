@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "easyprotolib"
-version = "0.1.1"
+version = "0.3.2"
 authors = [
     { name = "baiYunMieAwa", email = "baiyunmie@163.com" },
 ]
@@ -27,6 +27,9 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools]
+include-package-data = true
 
 # [tool.setuptools]
 # ext-modules = [
