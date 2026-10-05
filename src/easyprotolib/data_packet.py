@@ -1,6 +1,8 @@
-from .advanced_datatypes import *
-from .command import *
+from .datatypes import MCPHeightMap, MCPChunkData, MCPBlockEntities, MCPLightData, MCPIdentifierArray, TAGCompound
+from .datatypes.basic_datatypes import *
+from .datatypes.command import *
 from .err import MCPacketNotFound, MCUnpackError
+from .map import MCDataPacketMap
 import time
 import random
 
@@ -14,17 +16,7 @@ STATE_PLAY          = 3
 STATE_CONFIGURATION = 4
 
 
-class MCDataPackets:
-    __packets = {}
-    # __packets: dict[tuple[int, int, int], type[MCDataPacket] | None]
 
-    @classmethod
-    def set(cls, state: int, packet_id: int, direction: int, packet):
-        cls.__packets[(state, packet_id, direction)] = packet
-
-    @classmethod
-    def get(cls, state: int, packet_id: int, direction: int):
-        return cls.__packets[(state, packet_id, direction)]
 
 
 class MCConfig:
@@ -37,7 +29,7 @@ class MCConfig:
 
 
 class MCDataPacket:
-    fields: list[tuple[str, type[MCObject], MCObject | None]] = []
+    fields: list[tuple[str, type[MCPObject], MCPObject | None]] = []
     packet_id: int = -1
     state: int = -1
     direction: int = -1
@@ -58,7 +50,7 @@ class MCDataPacket:
     def disable_characterization(cls):
         cls.characterization = lambda x: x
 
-    def pack(self) -> bytes:
+    def pack(self) -> bytearray:
         result = bytearray(b'')
         for field in self.fields:
             value = None
@@ -74,39 +66,38 @@ class MCDataPacket:
             elif not isinstance(value, field[1]):
                 raise TypeError(f"字段 {field[0]} 类型有误: 预期 {field[1].__name__}, 实际 {value.__name__}")
             if field[1].__MCObjectSetter__:
-                value = MCObjectDuplicator(field[1], value)
+                value = MCPObjectDuplicator(field[1], value)
             result += value
-        packet_id = MCVarInt(self.packet_id).serialization()
-        result[:0] = MCVarInt(len(result) + len(packet_id)) + packet_id
+        packet_id = MCPVarInt.fast_serialize(self.packet_id)
+        result[:0] = MCPVarInt.fast_serialize(len(result) + len(packet_id)) + packet_id
         self.length = len(result)
-        return bytes(result)
+        return result
 
     @staticmethod
     def unpack(config: MCConfig, data):
         if len(data) == 0:
             return None
         try:
-            length = MCVarInt._obj_deserialization(data)
+            length = MCPVarInt._obj_deserialize(data)
         except EOFError:
             return None
         if len(data) < length[0] + length[1]:
             return None
         # print(data[length[1]:length[0]+length[1]])
         try:
-            pid = MCVarInt._obj_deserialization(data[length[1]:])
+            pid = MCPVarInt._obj_deserialize(data[length[1]:])
         except EOFError:
             return None
         try:
-            packet = MCDataPackets.get(config.state, pid[0], config.direction)
+            packet = MCDataPacketMap.get(config.state, pid[0], config.direction)
         except KeyError:
             raise MCPacketNotFound(
                 f"找不到满足以下条件的数据包类: "
-                f"方向: {("Client -> Server", "Server -> Client")[config.direction]}; 状态: {config.state}; 包ID: {hex(pid[0])}. "
-                f"数据包内容: {data[length[1] + pid[1]:]}")
+                f"方向: {("Client -> Server", "Server -> Client")[config.direction]}; 状态: {config.state}; 包ID: {hex(pid[0])}. ")
         try:
             result = packet._packet_unpack(data[length[1] + pid[1]:])
         except Exception as e:
-            raise MCUnpackError(f"解析 {packet.__name__} 时发生错误! 数据包内容: {data[length[1] + pid[1]:]}; 错误: {e.__class__.__name__}: {e}")
+            raise MCUnpackError(f"解析 {packet.__name__} 时发生错误! 错误: {e.__class__.__name__}: {e}")
         return {"packet": packet, "length": length[0] + length[1], "result": result, "pid": packet.packet_id}
 
     @classmethod
@@ -114,7 +105,7 @@ class MCDataPacket:
         result = {}
         offset = 0
         for i in cls.fields:
-            r, length = i[1].deserialization(data[offset:])
+            r, length = i[1].deserialize(data[offset:])
             result[i[0]] = r
             offset += length
         return result
@@ -122,7 +113,7 @@ class MCDataPacket:
     @classmethod
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        if cls.__name__ in ('MCDataPackets',
+        if cls.__name__ in (
              'MCCDataPacket',
              'MCSDataPacket',
              'MCCStateDataPacket',
@@ -141,7 +132,7 @@ class MCDataPacket:
             raise ValueError(f"{cls.__name__} 未设定合法的 `state` 值")
         if cls.direction not in (0, 1):
             raise ValueError(f"{cls.__name__} 未设定合法的 `direction` 值")
-        MCDataPackets.set(cls.state, cls.packet_id, cls.direction, cls)
+        MCDataPacketMap.set(cls.state, cls.packet_id, cls.direction, cls)
 
 
 class MCCDataPacket(MCDataPacket):
@@ -184,50 +175,50 @@ class MCSConfigurationDataPacket(MCSDataPacket):
 
 # State 1
 class MCCResponseStatus(MCCStateDataPacket):
-    fields = [("Response", MCJSONTextComponent, None)]
+    fields = [("Response", MCPJSONTextComponent, None)]
     packet_id = 0x00
 
 
 class MCCPongStatus(MCCStateDataPacket):
-    fields = [("Time", MCLong, None)]
+    fields = [("Time", MCPLong, None)]
     packet_id = 0x01
 
 
 # State 2
 class MCCDisconnectLogin(MCCLoginDataPacket):
-    fields = [("Reason", MCJSONTextComponent, MCJSONTextComponent("Disconnect"))]
+    fields = [("Reason", MCPJSONTextComponent, MCPJSONTextComponent("Disconnect"))]
     packet_id = 0x00
 
 
 class MCCEncryptionRequest(MCCLoginDataPacket):
     fields = [
-        ("ServerID", MCString, MCString("")),
-        ("PublicKey", MCVarBaseBytearray, None),
-        ("VerifyToken", MCVarBaseBytearray, None)
+        ("ServerID", MCPString, MCPString("")),
+        ("PublicKey", MCPVarBaseBytearray, None),
+        ("VerifyToken", MCPVarBaseBytearray, None)
     ]
     packet_id = 0x01
 
 
 class MCCLoginSuccess(MCCLoginDataPacket):
     fields = [
-        ("UUID", MCUUID, None),
-        ("Username", MCString, None)
+        ("UUID", MCPUUID, None),
+        ("Username", MCPString, None)
     ]
     packet_id = 0x02
 
 
 class MCCSetCompression(MCCLoginDataPacket):
     fields = [
-        ("Threshold", MCVarInt, MCVarInt(-1))
+        ("Threshold", MCPVarInt, MCPVarInt(-1))
     ]
     packet_id = 0x03
 
 
 class MCCLoginPluginRequest(MCCLoginDataPacket):
     fields = [
-        ("MessageID", MCVarInt, None),
-        ("Channel", MCIdentifier, None),
-        ("Data", MCBaseBytearray, None)
+        ("MessageID", MCPVarInt, None),
+        ("Channel", MCPIdentifier, None),
+        ("Data", MCPBaseBytearray, None)
     ]
     packet_id = 0x04
 
@@ -235,155 +226,165 @@ class MCCLoginPluginRequest(MCCLoginDataPacket):
 # State 3
 class MCCServerDifficulty(MCCPlayDataPacket):
     fields = [
-        ("Difficulty", MCUnsignedByte, None),
-        ("Locked", MCBoolean, MCBoolean(False))
+        ("Difficulty", MCPUnsignedByte, None),
+        ("Locked", MCPBoolean, MCPBoolean(False))
     ]
     packet_id = 0x0E
 
 
 class MCCChatMessage(MCCPlayDataPacket):
     fields = [
-        ("Data", MCJSONTextComponent, None),
-        ("Position", MCByte, MCByte(0)),      # 0: chat (chat box), 1: system message (chat box), 2: game info (above hotbar).
-        ("Sender", MCUUID, MCUUID(0))
+        ("Data", MCPJSONTextComponent, None),
+        ("Position", MCPByte, MCPByte(0)),      # 0: chat (chat box), 1: system message (chat box), 2: game info (above hotbar).
+        ("Sender", MCPUUID, MCPUUID(0))
     ]
     packet_id = 0x0F
 
 
 class MCCDeclareCommands(MCCPlayDataPacket):
-    fields = [("Commands", MCCommandGraph, None)]
+    fields = [("Commands", MCPCommandGraph, None)]
     packet_id = 0x12
 
 
 class MCCPluginMessage(MCCPlayDataPacket):
     fields = [
-        ("Channel", MCIdentifier, None),
-        ("Data", MCBaseBytearray, None)
+        ("Channel", MCPIdentifier, None),
+        ("Data", MCPBaseBytearray, None)
     ]
     packet_id = 0x18
 
 
 class MCCDisconnectPlay(MCCPlayDataPacket):
-    fields = [("Reason", MCJSONTextComponent, MCJSONTextComponent("Disconnect"))]
+    fields = [("Reason", MCPJSONTextComponent, MCPJSONTextComponent("Disconnect"))]
     packet_id = 0x1A
 
 
 class MCCUnloadChunk(MCCPlayDataPacket):
     fields = [
-        ("X", MCInt, None),
-        ("Z", MCInt, None)
+        ("X", MCPInt, None),
+        ("Z", MCPInt, None)
     ]
     packet_id = 0x1D
 
 
 class MCCChangeGameState(MCCPlayDataPacket):
     fields = [
-        ("Reason", MCUnsignedByte, None),
-        ("Value", MCFloat, None)
+        ("Reason", MCPUnsignedByte, None),
+        ("Value", MCPFloat, None)
     ]
     packet_id = 0x1E
 
 
 class MCCKeepAlive(MCCPlayDataPacket):
     fields = [
-        ("ID", MCLong, MCLong(random.randint(-1<<63, (1<<63)-1)))
+        ("ID", MCPLong, MCPLong(random.randint(-1 << 63, (1 << 63) - 1)))
     ]
     packet_id = 0x21
 
 
 class MCCChunkDataAndUpdateLight(MCCPlayDataPacket):
     fields = [
-        ("X", MCInt, None),
-        ("Z", MCInt, None),
-        ("Heightmap", MCHeightMap, None),                   # 0~1ms
-        ("Data", MCChunkData, None),                        # 300~360ms -> 140~180ms -> 80~110ms -> 2ms
-        ("BlockEntities", MCBlockEntities, MCBlockEntities([])),
+        ("X", MCPInt, None),
+        ("Z", MCPInt, None),
+        ("Heightmap", MCPHeightMap, None),                   # 0~1ms
+        ("Data", MCPChunkData, None),                        # 300~360ms -> 140~180ms -> 80~110ms -> 2ms
+        ("BlockEntities", MCPBlockEntities, MCPBlockEntities([])),
         # 尚未实现实体方块字段, 所以实体方块数量始终为0      (归档)实体方块字段已于 2026/7/23 获得完整实现
-        ("TrustEdges", MCBoolean, MCBoolean(True)),
-        ("LightData", MCLightData, None)                    # 260~350ms -> 200~250ms -> 30~50ms -> 13~15ms
+        ("TrustEdges", MCPBoolean, MCPBoolean(True)),
+        ("LightData", MCPLightData, None)                    # 260~350ms -> 200~250ms -> 30~50ms -> 13~15ms
     ]
     packet_id = 0x22
-    get_heightmap_class = lambda: None
+    get_world_data = lambda: None
     # 500~600ms -> 460~540ms -> 400~440ms -> [0~1ms] -> 100~130ms -> 15ms~17ms
+    hm = {}
+    light = {}
 
     @classmethod
     def _packet_unpack(cls, data):
         # noinspection PyNoneFunctionAssignment
-        heightmap = cls.get_heightmap_class()
-        if heightmap is None:
+        world_data = cls.get_world_data()
+        if world_data is None:
             raise ValueError("请为 `MCCChunkDataAndUpdateLight` 设置正确的 `get_heightmap_class` 方法")
+        heightmap = cls.hm.get(world_data, None)
+        if heightmap is None:
+            cls.hm[world_data] = MCPHeightMap.set_world_data(world_data[0], world_data[1])
+            heightmap = cls.hm[world_data]
+        light = cls.light.get(world_data, None)
+        if light is None:
+            cls.light[world_data] = MCPLightData.set_world_data(world_data[0], world_data[1])
+            light = cls.light[world_data]
         result = {}
-        result["X"], offset = MCInt.deserialization(data)
-        result["Z"], l = MCInt.deserialization(data[offset:])
+        result["X"], offset = MCPInt.deserialize(data)
+        result["Z"], l = MCPInt.deserialize(data[offset:])
         offset += l
         # noinspection PyUnresolvedReferences
-        result["Heightmap"], l = heightmap.deserialization(data[offset:])
+        result["Heightmap"], l = heightmap.deserialize(data[offset:])
         offset += l
-        result["Data"], l = MCChunkData.deserialization(data[offset:])
+        result["Data"], l = MCPChunkData.deserialize(data[offset:])
         offset += l
-        result["BlockEntities"], l = MCBlockEntities.deserialization(data[offset:])
+        result["BlockEntities"], l = MCPBlockEntities.deserialize(data[offset:])
         offset += l
-        result["TrustEdges"], l = MCBoolean.deserialization(data[offset:])
+        result["TrustEdges"], l = MCPBoolean.deserialize(data[offset:])
         offset += l
-        result["LightData"] = MCLightData.deserialization(data[offset:])[0]
+        result["LightData"] = light.deserialize(data[offset:])[0]
         return result
 
     @classmethod
-    def set_get_heightmap_class_function(cls, func):
-        cls.get_heightmap_class = func
+    def set_get_world_data(cls, func):
+        cls.get_world_data = func
 
 
 class MCCUpdateLight(MCCPlayDataPacket):
     fields = [
-        ("X", MCInt, None),
-        ("Z", MCInt, None),
-        ("TrustEdges", MCBoolean, MCBoolean(True)),
-        ("LightData", MCLightData, None)
+        ("X", MCPInt, None),
+        ("Z", MCPInt, None),
+        ("TrustEdges", MCPBoolean, MCPBoolean(True)),
+        ("LightData", MCPLightData, None)
     ]
     packet_id = 0x25
 
 
 class MCCJoinGame(MCCPlayDataPacket):
     fields = [
-        ("EID", MCInt, None),
-        ("IsHardcore", MCBoolean, MCBoolean(False)),
-        ("Gamemode", MCUnsignedByte, None),
-        ("PreviousGamemode", MCByte, MCByte(-1)),
-        ("DimensionNames", MCIdentifierArray, None),
+        ("EID", MCPInt, None),
+        ("IsHardcore", MCPBoolean, MCPBoolean(False)),
+        ("Gamemode", MCPUnsignedByte, None),
+        ("PreviousGamemode", MCPByte, MCPByte(-1)),
+        ("DimensionNames", MCPIdentifierArray, None),
         ("DimensionCodec", TAGCompound, None),
         ("Dimension", TAGCompound, None),
-        ("DimensionName", MCIdentifier, None),
-        ("HashedSeed", MCLong, None),
-        ("MaxPlayers", MCVarInt, None),
-        ("ViewDistance", MCVarInt, None),
-        ("SimulationDistance", MCVarInt, None),
-        ("ReducedDebugInfo", MCBoolean, MCBoolean(False)),
-        ("EnableRespawnScreen", MCBoolean, MCBoolean(True)),
-        ("IsDebug", MCBoolean, MCBoolean(False)),
-        ("IsFlat", MCBoolean, MCBoolean(False))
+        ("DimensionName", MCPIdentifier, None),
+        ("HashedSeed", MCPLong, None),
+        ("MaxPlayers", MCPVarInt, None),
+        ("ViewDistance", MCPVarInt, None),
+        ("SimulationDistance", MCPVarInt, None),
+        ("ReducedDebugInfo", MCPBoolean, MCPBoolean(False)),
+        ("EnableRespawnScreen", MCPBoolean, MCPBoolean(True)),
+        ("IsDebug", MCPBoolean, MCPBoolean(False)),
+        ("IsFlat", MCPBoolean, MCPBoolean(False))
     ]
     packet_id = 0x26
 
 
 class MCCOpenBook(MCCPlayDataPacket):
-    fields = [("Hand", MCVarInt, MCVarInt(0))]
+    fields = [("Hand", MCPVarInt, MCPVarInt(0))]
     packet_id = 0x2D
 
 
 class MCCPingPlay(MCCPlayDataPacket):
-    fields = [("ID", MCInt, None)]
+    fields = [("ID", MCPInt, None)]
     packet_id = 0x30
 
 
 class MCCHeldItemChange(MCCPlayDataPacket):
-    fields = [("Slot", MCByte, None)]
+    fields = [("Slot", MCPByte, None)]
     packet_id = 0x48
 
 
 class MCCTimeUpdate(MCCPlayDataPacket):
     fields = [
-        ("WorldAge", MCLong, None),
-        ("DayTime", MCLong, None)
+        ("WorldAge", MCPLong, None),
+        ("DayTime", MCPLong, None)
     ]
     packet_id = 0x59
 
@@ -391,10 +392,10 @@ class MCCTimeUpdate(MCCPlayDataPacket):
 # State 0
 class MCSHandshake(MCSHandshakeDataPacket):
     fields = [
-        ("ProtocolVersion", MCVarInt, None),
-        ("ServerAddress", MCString, None),
-        ("ServerPort", MCUnsignedShort, MCUnsignedShort(25565)),
-        ("NextState", MCVarInt, None)
+        ("ProtocolVersion", MCPVarInt, None),
+        ("ServerAddress", MCPString, None),
+        ("ServerPort", MCPUnsignedShort, MCPUnsignedShort(25565)),
+        ("NextState", MCPVarInt, None)
     ]
     packet_id = 0x00
 
@@ -409,29 +410,29 @@ class MCSRequestStatus(MCSStateDataPacket):
 
 
 class MCSPingStatus(MCSStateDataPacket):
-    fields = [("Time", MCLong, MCLong(int(time.time())))]
+    fields = [("Time", MCPLong, MCPLong(int(time.time())))]
     packet_id = 0x01
 
 
 # State 2
 class MCSLoginStart(MCSLoginDataPacket):
-    fields = [("Username", MCString, None)]
+    fields = [("Username", MCPString, None)]
     packet_id = 0x00
 
 
 class MCSEncryptionResponse(MCSLoginDataPacket):
     fields = [
-        ("SharedSecret", MCVarBaseBytearray, None),
-        ("VerifyToken", MCVarBaseBytearray, None)
+        ("SharedSecret", MCPVarBaseBytearray, None),
+        ("VerifyToken", MCPVarBaseBytearray, None)
     ]
     packet_id = 0x01
 
 
 class MCSLoginPluginResponse(MCSLoginDataPacket):
     fields = [
-        ("MessageID", MCVarInt, None),
-        ("Successful", MCBoolean, None),
-        ("Data", MCBaseBytearray, None)
+        ("MessageID", MCPVarInt, None),
+        ("Successful", MCPBoolean, None),
+        ("Data", MCPBaseBytearray, None)
     ]
     packet_id = 0x02
 
@@ -439,96 +440,97 @@ class MCSLoginPluginResponse(MCSLoginDataPacket):
     def _packet_unpack(cls, data):
         result = {}
         offset = 0
-        result["MessageID"], l = MCVarInt.deserialization(data)
+        result["MessageID"], l = MCPVarInt.deserialize(data)
         offset += l
-        result["Successful"], l = MCBoolean.deserialization(data[offset:])
+        result["Successful"], l = MCPBoolean.deserialize(data[offset:])
         offset += l
         if result["Successful"]:
-            result["Data"], l = MCBaseBytearray.deserialization(data[offset:])
+            result["Data"], l = MCPBaseBytearray.deserialize(data[offset:])
         else:
-            result["Data"] = MCBaseBytearray(b'')
+            result["Data"] = MCPBaseBytearray(b'')
         return result
 
 
 # State 3
 class MCSTeleportConfirm(MCSPlayDataPacket):
-    fields = [("TeleportID", MCVarInt, None)]
+    fields = [("TeleportID", MCPVarInt, None)]
     packet_id = 0x00
 
 
 class MCSSetDifficulty(MCSPlayDataPacket):
-    fields = [("NewDifficulty", MCByte, None)]
+    fields = [("NewDifficulty", MCPByte, None)]
     packet_id = 0x02
 
 
 class MCSChatMessage(MCSPlayDataPacket):
-    fields = [("Message", MCString, None)]
+    fields = [("Message", MCPString, None)]
     packet_id = 0x03
 
 
 class MCSClientStatus(MCSPlayDataPacket):
-    fields = [("ID", MCVarInt, None)]
+    fields = [("ID", MCPVarInt, None)]
     packet_id = 0x04
 
 
 class MCSClientSettings(MCSPlayDataPacket):
     fields = [
-        ("Locale", MCString, None),
-        ("ViewDistance", MCByte, None),
-        ("ChatMode", MCVarInt, None),
-        ("ChatColors", MCBoolean, None),
-        ("DisplayedSkinParts", MCUnsignedByte, None),
-        ("MainHand", MCVarInt, None),
-        ("EnableTextFiltering", MCBoolean, None),
-        ("AllowServerListings", MCBoolean, None)
+        ("Locale", MCPString, None),
+        ("ViewDistance", MCPByte, None),
+        ("ChatMode", MCPVarInt, None),
+        ("ChatColors", MCPBoolean, None),
+        ("DisplayedSkinParts", MCPUnsignedByte, None),
+        ("MainHand", MCPVarInt, None),
+        ("EnableTextFiltering", MCPBoolean, None),
+        ("AllowServerListings", MCPBoolean, None)
     ]
     packet_id = 0x05
 
 
 class MCSPluginMessage(MCSPlayDataPacket):
     fields = [
-        ("Channel", MCIdentifier, None),
-        ("Data", MCBaseBytearray, None)
+        ("Channel", MCPIdentifier, None),
+        ("Data", MCPBaseBytearray, None)
     ]
     packet_id = 0x0A
 
 
 class MCSKeepAlive(MCSPlayDataPacket):
     fields = [
-        ("ID", MCLong, None)
+        ("ID", MCPLong, None)
     ]
     packet_id = 0x0F
 
 
 class MCSPlayerPosition(MCSPlayDataPacket):
     fields = [
-        ("X", MCDouble, None),
-        ("Y", MCDouble, None),
-        ("Z", MCDouble, None),
-        ("OnGround", MCBoolean, MCBoolean(True))
+        ("X", MCPDouble, None),
+        ("Y", MCPDouble, None),
+        ("Z", MCPDouble, None),
+        ("OnGround", MCPBoolean, MCPBoolean(True))
     ]
     packet_id = 0x11
 
 
 class MCSPlayerPositionAndRotation(MCSPlayDataPacket):
     fields = [
-        ("X", MCDouble, None),
-        ("Y", MCDouble, None),
-        ("Z", MCDouble, None),
-        ("Yaw", MCFloat, None),
-        ("Pitch", MCFloat, None),
-        ("OnGround", MCBoolean, MCBoolean(True))
+        ("X", MCPDouble, None),
+        ("Y", MCPDouble, None),
+        ("Z", MCPDouble, None),
+        ("Yaw", MCPFloat, None),
+        ("Pitch", MCPFloat, None),
+        ("OnGround", MCPBoolean, MCPBoolean(True))
     ]
     packet_id = 0x12
 
 
 class MCSPongPlay(MCSPlayDataPacket):
-    fields = [("ID", MCInt, None)]
+    fields = [("ID", MCPInt, None)]
     packet_id = 0x1D
 
 
-# 36
-'''packets = {
+# 已实现 39 个包
+'''
+packets = {
     # State 0   MCS(2/2)    MCC(0/0)
     (0, 0x00, 0): MCSHandshake,
     (0, 0xFE, 0): MCSLegacyServerListPing,
@@ -577,7 +579,8 @@ class MCSPongPlay(MCSPlayDataPacket):
     (3, 0x30, 1): MCCPingPlay,
     (3, 0x48, 1): MCCHeldItemChange,
     (3, 0x59, 1): MCCTimeUpdate,
-}'''
+}
+'''
 # packets: dict[tuple[int, int, int], type[MCDataPacket] | None]
 # {(状态, 数据包ID, 数据包接收方): 数据包类, ...}
 # 数据包接收方: 0表示服务端接收(C->S), 1表示客户端接收(S->C)
@@ -585,3 +588,72 @@ class MCSPongPlay(MCSPlayDataPacket):
 # 数据包类命名规则: MC + 数据包接收方(S/C) + 数据包在mcwiki中的名称 + 状态名(可选, 在数据包名称有歧义时需加), 使用双驼峰命名法
 # 数据包字段命名规则: 使用mcwiki中的字段名(可略作修改), 使用双驼峰命名法, 只能使用[A-Za-z_]内的字符
 # 数据包字段匹配规则: 忽略空白字符, 大小写不敏感
+
+
+__all__ = [
+    'MCCResponseStatus',
+    'MCCPongStatus',
+    'MCCDisconnectLogin',
+    'MCCEncryptionRequest',
+    'MCCLoginSuccess',
+    'MCCSetCompression',
+    'MCCLoginPluginRequest',
+    'MCCServerDifficulty',
+    'MCCChatMessage',
+    'MCCDeclareCommands',
+    'MCCPluginMessage',
+    'MCCDisconnectPlay',
+    'MCCUnloadChunk',
+    'MCCChangeGameState',
+    'MCCKeepAlive',
+    'MCCChunkDataAndUpdateLight',
+    'MCCUpdateLight',
+    'MCCJoinGame',
+    'MCCOpenBook',
+    'MCCPingPlay',
+    'MCCHeldItemChange',
+    'MCCTimeUpdate',
+    'MCSHandshake',
+    'MCSLegacyServerListPing',
+    'MCSRequestStatus',
+    'MCSPingStatus',
+    'MCSLoginStart',
+    'MCSEncryptionResponse',
+    'MCSLoginPluginResponse',
+    'MCSTeleportConfirm',
+    'MCSSetDifficulty',
+    'MCSChatMessage',
+    'MCSClientStatus',
+    'MCSClientSettings',
+    'MCSPluginMessage',
+    'MCSKeepAlive',
+    'MCSPlayerPosition',
+    'MCSPlayerPositionAndRotation',
+    'MCSPongPlay',
+
+    'MCDataPacket',
+    'MCCDataPacket',
+    'MCSDataPacket',
+    'MCCStateDataPacket',
+    'MCCLoginDataPacket',
+    'MCCPlayDataPacket',
+    'MCCConfigurationDataPacket',
+    'MCSHandshakeDataPacket',
+    'MCSStateDataPacket',
+    'MCSLoginDataPacket',
+    'MCSPlayDataPacket',
+    'MCSConfigurationDataPacket',
+
+    'MCDataPacketMap',
+    'MCConfig',
+
+    'SIDE_SERVER',
+    'SIDE_CLIENT',
+    'S2C',
+    'C2S',
+    'STATE_PLAY',
+    'STATE_STATE',
+    'STATE_LOGIN',
+    'STATE_CONFIGURATION',
+    'STATE_HANDSHAKE',
+]

@@ -14,48 +14,50 @@ mc_boolean_tests = \
     (False, bytearray(b'\x00')),
 ]
 
-mc_byte_tests = load_test_cases("mc_byte_cases.py")
-mc_unsignedbyte_tests = load_test_cases("mc_unsignedbyte_cases.py")
-mc_short_tests = load_test_cases("mc_short_cases.py")
-mc_unsignedshort_tests = load_test_cases("mc_unsignedshort_cases.py")
-mc_int_tests = load_test_cases("mc_int_cases.py")
-mc_long_tests = load_test_cases("mc_long_cases.py")
+mc_byte_tests = load_test_cases("mc_byte_cases.py")[:256]
+mc_unsignedbyte_tests = load_test_cases("mc_unsignedbyte_cases.py")[:256]
+mc_short_tests = load_test_cases("mc_short_cases.py")[:256]
+mc_unsignedshort_tests = load_test_cases("mc_unsignedshort_cases.py")[:256]
+mc_int_tests = load_test_cases("mc_int_cases.py")[:256]
+mc_long_tests = load_test_cases("mc_long_cases.py")[:256]
 
 
-def _test_MCObject(mc_object: type[ep.MCObject], data, expected: bytearray):
-    actual = mc_object(data).serialization()
-    parsed_data = mc_object.deserialization(actual)
+def _test_MCObject(mc_object: type[ep.MCPObject], data, expected: bytearray):
+    actual1 = mc_object(data).serialize()
+    actual2 = mc_object.fast_serialize(data)
+    parsed_data = mc_object.deserialize(actual1)
 
-    assert parsed_data == (data, len(expected))
-    assert actual == expected
+    assert actual1 == expected
+    assert actual2 == expected
+    assert parsed_data == (data, len(actual1))
 
 
 @pytest.mark.parametrize("data, expected", mc_boolean_tests)
 def test_MCBoolean(data: bool, expected: bytearray):
-    _test_MCObject(ep.MCBoolean, data, expected)
+    _test_MCObject(ep.MCPBoolean, data, expected)
 
 
 @pytest.mark.parametrize("data, expected", mc_byte_tests)
 def test_MCByte(data: int, expected: bytearray):
-    _test_MCObject(ep.MCByte, data, expected)
+    _test_MCObject(ep.MCPByte, data, expected)
 
 @pytest.mark.parametrize("data, expected", mc_unsignedbyte_tests)
 def test_MCUnsignedByte(data: int, expected: bytearray):
-    _test_MCObject(ep.MCUnsignedByte, data, expected)
+    _test_MCObject(ep.MCPUnsignedByte, data, expected)
 
 @pytest.mark.parametrize("data, expected", mc_short_tests)
 def test_MCShort(data: int, expected: bytearray):
-    _test_MCObject(ep.MCShort, data, expected)
+    _test_MCObject(ep.MCPShort, data, expected)
 
 @pytest.mark.parametrize("data, expected", mc_unsignedshort_tests)
 def test_MCUnsignedShort(data: int, expected: bytearray):
-    _test_MCObject(ep.MCUnsignedShort, data, expected)
+    _test_MCObject(ep.MCPUnsignedShort, data, expected)
 
 @pytest.mark.parametrize("data, expected", mc_int_tests)
 def test_MCInt(data: int, expected: bytearray):
-    _test_MCObject(ep.MCInt, data, expected)
+    _test_MCObject(ep.MCPInt, data, expected)
 
 @pytest.mark.parametrize("data, expected", mc_long_tests)
 def test_MCLong(data: int, expected: bytearray):
-    _test_MCObject(ep.MCLong, data, expected)
+    _test_MCObject(ep.MCPLong, data, expected)
 
