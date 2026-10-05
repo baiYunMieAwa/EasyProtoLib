@@ -74,7 +74,7 @@ for i in range(5120, 12288):
     data1[i] = 15
 
 
-f = open(r"light_data.bin", "rb")
+f = open(r"test/light_data.bin", "rb")
 fr = f.read()
 f.close()
 light = ep.MCPLightData.set_world_data(384, -64).deserialize(fr)[0]

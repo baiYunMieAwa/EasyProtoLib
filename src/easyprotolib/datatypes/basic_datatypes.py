@@ -75,10 +75,20 @@ class MCPObject:
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+        if cls == MCPObject:
+            return
         if cls.length > 0:
             def get_length(_cls, _data: None): return cls.length
             cls.get_length = get_length
         cls.deserialize = cls._obj_deserialize
+        if not cls.enable_cache:
+            cls.serialize = cls._obj_serialize
+        else:
+            def serialize(self):
+                if self.result is None:
+                    self.result = self._obj_serialize()
+                return self.result
+            cls.serialize = serialize
 
 
 class MCPBoolean(MCPObject):
