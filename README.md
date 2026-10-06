@@ -60,7 +60,8 @@ print(data)
 import easyprotolib as ep
 
 data = b'\x10\x00\xf6\x05\t127.0.0.1c\xdd\x01'
-config = ep.MCConfig(ep.STATE_HANDSHAKE, ep.SIDE_SERVER)  # Configure yourself; ep.SIDE_SERVER means you are the server side
+config = ep.MCNetConfig(ep.STATE_HANDSHAKE,
+                        ep.SIDE_SERVER)  # Configure yourself; ep.SIDE_SERVER means you are the server side
 
 packet = ep.MCDataPacket.unpack(config, data)
 
@@ -103,19 +104,19 @@ class MCMyObject(ep.MCPObject):
     def __init__(self, data: tuple[str, int]):
         super().__init__(data)  # Automatically registers self.data
 
-    def _obj_serialization(self) -> bytearray:
+    def _obj_serialize(self) -> bytearray:
         # Implement serialization; do not override serialization()
         return ep.MCPString(self.data[0]) + ep.MCPVarInt(
             self.data[
                 1])  # No need to explicitly call MCPObject's serialization; addition automatically serializes
 
     @staticmethod
-    def _obj_deserialization(data: bytearray) -> tuple[tuple[str, int], int]:
+    def _obj_deserialize(data: bytearray, offset: int = 0) -> tuple[tuple[str, int], int]:
         # Implement deserialization (static)
-        string, offset = ep.MCPString.deserialize(data)
-        varint, offset2 = ep.MCPVarInt.deserialize(data[offset:])
+        string, offset1 = ep.MCPString.deserialize(data, offset)
+        varint, offset2 = ep.MCPVarInt.deserialize(data, offset + offset1)
         # Return value: tuple[actual payload, number of bytes processed]
-        return (string, varint), offset + offset2
+        return (string, varint), offset1 + offset2
 
 # You can then use this data type normally.
 ```
@@ -207,7 +208,7 @@ print(data)
 import easyprotolib as ep
 
 data = b'\x10\x00\xf6\x05\t127.0.0.1c\xdd\x01'
-config = ep.MCConfig(ep.STATE_HANDSHAKE, ep.SIDE_SERVER)  # 配置自己, ep.SIDE_SERVER 表示自己是服务端
+config = ep.MCNetConfig(ep.STATE_HANDSHAKE, ep.SIDE_SERVER)  # 配置自己, ep.SIDE_SERVER 表示自己是服务端
 
 packet = ep.MCDataPacket.unpack(config, data)
 
@@ -250,18 +251,18 @@ class MCMyObject(ep.MCPObject):
     def __init__(self, data: tuple[str, int]):
         super().__init__(data)  # 自动注册 self.data
 
-    def _obj_serialization(self) -> bytearray:
+    def _obj_serialize(self) -> bytearray:
         # 编写序列化方法, 请不要重写 serialization() 方法
         return ep.MCPString(self.data[0]) + ep.MCPVarInt(
             self.data[1])  # 无需显式调用 MCPObject 的序列化方法, 相加时会自动序列化
 
     @staticmethod
-    def _obj_deserialization(data: bytearray) -> tuple[tuple[str, int], int]:
+    def _obj_deserialize(data: bytearray, offset: int = 0) -> tuple[tuple[str, int], int]:
         # 编写反序列化方法(静态)
-        string, offset = ep.MCPString.deserialize(data)
-        varint, offset2 = ep.MCPVarInt.deserialize(data[offset:])
+        string, offset1 = ep.MCPString.deserialize(data, offset)
+        varint, offset2 = ep.MCPVarInt.deserialize(data, offset + offset1)
         # 返回值: tuple[实际负载, 已处理的字节流长度]
-        return (string, varint), offset + offset2
+        return (string, varint), offset1 + offset2
 
 # 随后可正常使用该数据类型
 ```

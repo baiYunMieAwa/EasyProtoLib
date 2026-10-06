@@ -1,6 +1,7 @@
 include THIRD-PARTY.json
 
 recursive-include tests *
+recursive-include docs *
 recursive-include benchmarks *
 
 prune __pycache__

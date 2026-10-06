@@ -1,6 +1,9 @@
+"""构建和解析数据包相关, 详见 docs/..."""
+from typing import Callable
+
 from .datatypes import MCPHeightMap, MCPChunkData, MCPBlockEntities, MCPLightData, MCPIdentifierArray, TAGCompound
 from .datatypes.basic_datatypes import *
-from .datatypes.command import *
+from .datatypes.advanced_datatypes import MCPCommandGraph
 from .err import MCPacketNotFound, MCUnpackError
 from .map import MCDataPacketMap
 import time
@@ -16,19 +19,35 @@ STATE_PLAY          = 3
 STATE_CONFIGURATION = 4
 
 
+class MCNetConfig:
+    """配置类 - 管理MC网络连接的方向和状态
 
-
-
-class MCConfig:
-    def __init__(self, state, direction):
+    Attributes:
+        state: 连接所处的状态
+        direction: 连接方向, 负责指明谁是客户端, 谁是服务端
+    """
+    def __init__(self, state: int, direction: int):
         self.state = state
         self.direction = direction
 
-    def set_state(self, new_state):
+    def set_state(self, new_state: int):
+        """设置连接状态
+
+        Args:
+            new_state: 新状态
+        """
         self.state = new_state
 
 
 class MCDataPacket:
+    """数据包类 - 构建和解析数据包
+
+    Attributes:
+        fields: 数据包字段, 基类基于这个属性构建和解析数据包. 类属性
+        packet_id: 数据包ID. 类属性
+        state: 数据包所处状态, 建议提供类继承指定. 类属性
+        direction: 数据包绑定方向, 建议提供类继承指定. 类属性
+    """
     fields: list[tuple[str, type[MCPObject], MCPObject | None]] = []
     packet_id: int = -1
     state: int = -1
@@ -39,23 +58,35 @@ class MCDataPacket:
         self.length = -1
 
     @staticmethod
-    def characterization(a):
+    def __characterization(a):
+        """字段名标准化函数"""
         return a.replace(" ", "").replace("\t", "").replace("_", "").replace("-", "").lower()
 
     @classmethod
-    def set_characterization(cls, func):
-        cls.characterization = func
+    def set_characterization(cls, func: Callable):
+        """自定义字段名匹配机制
+
+        Args:
+            func: 自定义的字段名标准化函数, 接受一个str参数, 返回一个str
+        """
+        cls.__characterization = func
 
     @classmethod
     def disable_characterization(cls):
-        cls.characterization = lambda x: x
+        """禁用字段名模糊匹配"""
+        cls.__characterization = lambda x: x
 
     def pack(self) -> bytearray:
+        """数据包构建函数
+
+        Return:
+            构建结果
+        """
         result = bytearray(b'')
         for field in self.fields:
             value = None
             for key in self.data:
-                if self.characterization(key) == self.characterization(field[0]):
+                if self.__characterization(key) == self.__characterization(field[0]):
                     value = self.data[key]
             if value is None:
                 value = field[2]
@@ -74,7 +105,16 @@ class MCDataPacket:
         return result
 
     @staticmethod
-    def unpack(config: MCConfig, data):
+    def unpack(config: MCNetConfig, data: bytearray | bytes) -> dict | None:
+        """数据包解析函数
+
+        Return:
+            解析结果, 如为 None 则代表数据包不完整
+
+        Raises:
+            MCPacketNotFound: 当找不到满足指定条件(方向, 状态, 数据包ID)的数据包类时抛出
+            MCUnpackError: 当解析数据包出错时抛出
+        """
         if len(data) == 0:
             return None
         try:
@@ -101,11 +141,19 @@ class MCDataPacket:
         return {"packet": packet, "length": length[0] + length[1], "result": result, "pid": packet.packet_id}
 
     @classmethod
-    def _packet_unpack(cls, data):
+    def _packet_unpack(cls, data: bytearray | bytes) -> dict:
+        """数据包的默认解析方法, 子类可重写
+
+        Args:
+            data: 去掉数据包头后的原始字节流
+
+        Return:
+            解析结果, 键为字段名, 值为字段值
+        """
         result = {}
         offset = 0
         for i in cls.fields:
-            r, length = i[1].deserialize(data[offset:])
+            r, length = i[1].deserialize(data, offset)
             result[i[0]] = r
             offset += length
         return result
@@ -294,10 +342,18 @@ class MCCChunkDataAndUpdateLight(MCCPlayDataPacket):
         ("LightData", MCPLightData, None)                    # 260~350ms -> 200~250ms -> 30~50ms -> 13~15ms
     ]
     packet_id = 0x22
-    get_world_data = lambda: None
     # 500~600ms -> 460~540ms -> 400~440ms -> [0~1ms] -> 100~130ms -> 15ms~17ms
     hm = {}
     light = {}
+
+    @staticmethod
+    def get_world_data() -> tuple[int, int]:
+        """用于获取世界数据, 以解析数据包
+
+        Return:
+            世界高度, 世界最低y坐标
+        """
+        ...
 
     @classmethod
     def _packet_unpack(cls, data):
@@ -330,7 +386,12 @@ class MCCChunkDataAndUpdateLight(MCCPlayDataPacket):
         return result
 
     @classmethod
-    def set_get_world_data(cls, func):
+    def set_get_world_data(cls, func: Callable):
+        """设置 用于获取世界数据的方法 的方法
+
+        Args:
+            func: 用于获取世界数据的函数, 无参数, 返回 tuple[int(世界高度), int(世界最低y坐标)]
+        """
         cls.get_world_data = func
 
 
@@ -645,7 +706,7 @@ __all__ = [
     'MCSConfigurationDataPacket',
 
     'MCDataPacketMap',
-    'MCConfig',
+    'MCNetConfig',
 
     'SIDE_SERVER',
     'SIDE_CLIENT',

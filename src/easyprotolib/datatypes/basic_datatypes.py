@@ -10,7 +10,11 @@ def _round(x: int | float) -> int:
 
 
 class MCPObject:
-    """MC数据类型 基类"""
+    """MC数据类型 基类
+
+    Attributes:
+        enable_cache: 是否启用缓存, True 为启用. 类属性
+    """
     __MCObjectSetter__ = False
     length = -1
     enable_cache = True
@@ -22,6 +26,11 @@ class MCPObject:
         self.result = None
 
     def serialize(self) -> bytearray | bytes:
+        """序列化数据
+
+        Return:
+            序列化结果
+        """
         if not self.enable_cache:
             return self._obj_serialize()
         if self.result is None:
@@ -29,25 +38,68 @@ class MCPObject:
         return self.result
 
     def _obj_serialize(self) -> bytearray | bytes:
+        """序列化数据, 子类可重写
+
+        Return:
+            序列化结果
+        """
         return self.fast_serialize(self.data)
 
     @staticmethod
-    def fast_serialize(data) -> bytearray | bytes: ...
+    def fast_serialize(data) -> bytearray | bytes:
+        """快速序列化数据
+
+        Args:
+            data: 数据
+
+        Return:
+            序列化结果
+        """
+        ...
 
     @staticmethod
-    def _obj_deserialize(data: bytearray, offset: int = 0) -> tuple[Any, int]: ...
+    def _obj_deserialize(data: bytearray, offset: int = 0) -> tuple[Any, int]:
+        """反序列化数据, 子类可重写
+
+        Args:
+            data: 数据
+            offset: 数据偏移量, 反序列化器从偏移量指定的位置开始解析, 默认从头开始解析
+
+        Return:
+            反序列化结果, 本段数据长度
+        """
+        ...
 
     @classmethod
     def deserialize(cls, data: bytearray | bytes, offset: int = 0) -> tuple[Any, int]:
+        """反序列化数据
+
+        Args:
+            data: 数据
+            offset: 数据偏移量, 反序列化器从偏移量指定的位置开始解析, 默认从头开始解析
+
+        Return:
+            反序列化结果, 本段数据长度
+        """
         return cls._obj_deserialize(data, offset)
 
     @classmethod
     def get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        """获取数据长度
+
+        Args:
+            data: 数据, 若数据定长则不必要
+            offset: 数据偏移量, 长度计算器从偏移量指定的位置开始解析, 默认从头开始解析
+
+        Return:
+            数据长度
+        """
         if data is None:
             raise ValueError(f"{cls.__name__} 类型的数据的长度必须根据具体数据确定")
         return cls._obj_deserialize(data, offset)[1]
 
     def delete_cache(self):
+        """删除缓存"""
         self.result = None
 
     def __bytes__(self):
@@ -81,14 +133,6 @@ class MCPObject:
             def get_length(_cls, _data: None): return cls.length
             cls.get_length = get_length
         cls.deserialize = cls._obj_deserialize
-        if not cls.enable_cache:
-            cls.serialize = cls._obj_serialize
-        else:
-            def serialize(self):
-                if self.result is None:
-                    self.result = self._obj_serialize()
-                return self.result
-            cls.serialize = serialize
 
 
 class MCPBoolean(MCPObject):

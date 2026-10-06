@@ -88,7 +88,7 @@ def test_MCCChunkDataAndUpdateLight_pack():
                                            LightData=light)
     result = packet.pack()
     MCCChunkDataAndUpdateLight.set_get_world_data(lambda: (384, -64))
-    ep.MCDataPacket.unpack(ep.MCConfig(state=ep.STATE_PLAY, direction=ep.SIDE_CLIENT), result)
+    ep.MCDataPacket.unpack(ep.MCNetConfig(state=ep.STATE_PLAY, direction=ep.SIDE_CLIENT), result)
 
 
 def _test_MCCChunkDataAndUpdateLight_unpack():
@@ -97,7 +97,7 @@ def _test_MCCChunkDataAndUpdateLight_unpack():
     data = f.read()
     data = MCPVarInt(len(data)).serialize() + data
     f.close()
-    result = ep.MCDataPacket.unpack(ep.MCConfig(state=ep.STATE_PLAY, direction=ep.SIDE_CLIENT), data)
+    result = ep.MCDataPacket.unpack(ep.MCNetConfig(state=ep.STATE_PLAY, direction=ep.SIDE_CLIENT), data)
     f = open("tests/chunk_data_and_light_update.out", "w", encoding="utf-8")
     print(result, file=f)
     f.close()

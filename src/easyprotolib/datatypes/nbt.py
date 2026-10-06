@@ -34,10 +34,25 @@ class MCPNBT(MCPObject):
         result = tag._nbt_deserialize(data[offset:])
         return (tag, name, result[0]), offset + result[1] - old_offset
 
-    def _nbt_serialize(self) -> bytearray: ...
+    def _nbt_serialize(self) -> bytearray:
+        """序列化 NBT 专用, 子类可重写
+
+        Return:
+            序列化结果
+        """
+        ...
 
     @staticmethod
-    def _nbt_deserialize(data: bytearray) -> tuple[..., int]: ...
+    def _nbt_deserialize(data: bytearray) -> tuple[..., int]:
+        """反序列化 NBT 专用, 子类可重写
+
+        Args:
+            data: 数据
+
+        Return:
+            反序列化结果, 本段数据长度
+        """
+        ...
 
     def __str__(self):
         if type(self.data) != str:

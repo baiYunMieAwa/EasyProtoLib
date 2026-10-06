@@ -6,6 +6,8 @@ import array
 
 # noinspection PyShadowingBuiltins
 class MCPObjectArray(MCPObject):
+    """MC数据类型 数组基类"""
+
     MCPObjectType: type[MCPObject] = MCPObject
     enable_cache = False
 
@@ -103,6 +105,8 @@ class MCPLongArray(MCPObjectArray):
 
     @classmethod
     def fast_serialize(cls, data: list[int | MCPLong]) -> bytearray:
+        if not isinstance(data, (list, tuple)):
+            raise TypeError("data 必须是列表或元组类型的")
         if len(data) == 0:
             return bytearray(1)
         if isinstance(data[0], MCPLong):

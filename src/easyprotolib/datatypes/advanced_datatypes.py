@@ -1,7 +1,9 @@
-from .basic_datatypes import MCPObject, MCPVarInt, MCPUnsignedByte, MCPShort, MCPInt, MCPLong, MCPObjectSetter
-from .array_datatypes import MCPObjectArray, MCPLongArray, MCPUnsignedByteArrayArray, MCPVarIntArray
+from .basic_datatypes import MCPObject, MCPVarInt, MCPUnsignedByte, MCPShort, MCPInt, MCPLong
+from .basic_datatypes import MCPObjectSetter, MCPString, MCPDouble, MCPFloat, MCPBoolean
+from .array_datatypes import MCPObjectArray, MCPLongArray, MCPUnsignedByteArrayArray, MCPVarIntArray, MCPByte, MCPIdentifier
 from easyprotolib.datatypes.nbt import TAGLongArray, TAGCompound, MCPNBT
 from easyprotolib.map import MCBlockEntitiesMap
+
 from typing import TYPE_CHECKING, Any
 import math
 import array
@@ -9,6 +11,13 @@ import sys
 
 if TYPE_CHECKING:
     from easyprotolib.gameobjects.block import MCBlock
+
+
+MCCommandLiteralNode        = 0x01
+MCCommandArgumentNode       = 0x02
+MCCommandIsExecutable       = 0x04
+MCCommandHasRedirect        = 0x08
+MCCommandHasSuggestionsType = 0x10
 
 
 def _pack(l: list[int], bpe: int) -> list[int]:
@@ -82,7 +91,90 @@ def _unpack(l: list[int], bpe: int, length: int) -> list[int]:
     return [(l[i // entries_per_long] >> (i % entries_per_long) * bpe) & mask for i in range(length)]
 
 
+class MCPCommandGraph(MCPObject):
+    """MC数据类型 命令图"""
+
+    def __init__(self, data: dict[str, tuple[int, dict[str, str | bytearray | bytes | MCPObject], dict[str, ...]]]):
+        data = {'': (0, {}, data)}
+        def setter(d, j=-1):
+            new_data = []
+            for i in d:
+                j += 1
+                t = setter(d[i][2], j)
+                l = [i[4] for i in t[0]]
+                new_data.append((i, d[i][0], d[i][1], l, j))
+                new_data += t[0]
+                j = t[1]
+            return new_data, j
+
+        new_data = sorted(setter(data)[0], key=lambda x: x[4])
+        super().__init__(new_data)
+
+    def _obj_serialize(self) -> bytearray:
+        data = self.data
+        data: list[tuple[str, int, dict[str, str | dict], list, int]]
+        num = data[-1][4]
+        result = MCPVarInt.fast_serialize(num + 1)
+        # root
+        result += MCPVarInt(0)
+        result += MCPVarIntArray(data[0][3])
+        del data[0]
+
+        for node in data:
+            name = node[0]
+            node_type = node[1]
+            result += MCPByte(node_type)
+            result += MCPVarIntArray(node[3])
+            if node_type & MCCommandHasRedirect:
+                # result += MCPVarInt(node[2]["redirect"])
+                # TODO  还未实现重定向节点
+                pass
+            result += MCPString(name)
+            if node_type & MCCommandArgumentNode:
+                parser = node[2]["parser"].strip().lower()
+                result += MCPIdentifier(parser)
+                if "properties" in node[2]:
+                    properties = node[2]["properties"]
+                    namespace = parser.split(":")[0].strip()
+                    parser_type = parser.split(":")[1].strip()
+                    if namespace == "brigadier":
+                        if parser_type in ("double", "float", "integer", "long"):
+                            result += MCPByte(properties["flags"])
+                            num_type = {"double": MCPDouble, "float": MCPFloat, "integer": MCPInt, "long": MCPLong}[parser_type]
+                            if properties["flags"] & 0x01 == 0x01:
+                                result += num_type(properties["min"])
+                            if properties["flags"] & 0x02 == 0x02:
+                                result += num_type(properties["max"])
+                        elif parser_type == "string":
+                            if 0 <= properties["type"] <= 2:
+                                result += MCPVarInt(properties["type"])
+                            else:
+                                raise ValueError('properties["type"] 不合法')
+                    elif namespace == "minecraft":
+                        if parser_type in ("entity", "score_holder"):
+                            result += MCPByte(properties["flags"])
+                        elif parser_type == "range":
+                            result += MCPBoolean(properties["decimals"])
+                        elif parser_type in ("resource", "resource_or_tag"):
+                            result += MCPIdentifier(properties["registry"])
+                    else:
+                        raise ValueError("parser 类型不合法")
+            if node_type & MCCommandHasSuggestionsType:
+                result += MCPIdentifier(node[2]["type"])
+                # mc客户端接受的类型:
+                # minecraft:ask_server
+                # minecraft:all_recipes
+                # minecraft:available_sounds
+                # minecraft:available_biomes
+                # minecraft:summonable_entities
+
+        result += MCPVarInt(0)   # 根节点索引
+        return result
+
+
 class _WorldDataMixin:
+    """世界数据混入"""
+
     world_height = -1
     world_min_y  = 0
     _is_world_data_init = False
@@ -93,6 +185,8 @@ class _WorldDataMixin:
 
 
 class MCPBitSet(MCPLongArray):
+    """MC数据类型 位图"""
+
     def __init__(self, data: list[bool] | tuple[bool]):
         n = len(data)
         if n == 0:
@@ -131,6 +225,8 @@ class MCPBitSet(MCPLongArray):
 
 # noinspection DuplicatedCode
 class MCPLightData(MCPObject, _WorldDataMixin):
+    """MC数据类型 光照数据"""
+
     _pack_high_tbl = bytes(range(0, 256, 16)) * 16
 
     _unpack_low_tbl = bytes(range(16)) * 16
@@ -283,6 +379,8 @@ class MCPLightData(MCPObject, _WorldDataMixin):
 
 
 class MCPHeightMap(MCPObject, _WorldDataMixin):
+    """MC数据类型 高度图"""
+
     def __init__(self, heightmap: dict[str, list[int]]):
         """heightmap 期望的y坐标是已经减去世界最低坐标的偏移值"""
         # 高度图在高版本不再是NBT了, 但在1.18.2中, 高度图仍然是NBT
@@ -314,6 +412,8 @@ class MCPHeightMap(MCPObject, _WorldDataMixin):
 
 
 class MCPPaletteContainer(MCPObject):
+    """MC数据类型 调色板"""
+
     min_bpe1    = -1    # 间接模式最小BPE
     max_bpe     = -1    # 间接模式最大BPE
     min_bpe2    = -1    # 直接模式最小BPE
@@ -451,6 +551,8 @@ class MCPBiomePaletteContainer(MCPPaletteContainer):
 
 
 class MCPChunkSection(MCPObject):
+    """MC数据类型 子区块"""
+
     def __init__(self, x, y, z, blocks: list[int], biomes: list[int], air_count: int):
         super().__init__(self)
         self.x = x
@@ -479,6 +581,8 @@ class MCPChunkSection(MCPObject):
 
 
 class MCPChunkData(MCPObject):
+    """MC数据类型 区块数据"""
+
     enable_cache = False
 
     def __init__(self, chunk):
@@ -515,6 +619,8 @@ class MCPChunkData(MCPObject):
 
 
 class MCPBlockEntity(MCPObject):
+    """MC数据类型 方块实体"""
+
     def __init__(self, block: 'MCBlock'):
         if not block.is_block_entity:
             raise ValueError("方块不是方块实体")
@@ -548,6 +654,7 @@ class MCPBlockEntity(MCPObject):
 
 
 class MCPBlockEntities(MCPObjectArray):
+    """MC数据类型 方块实体数组"""
     MCPObjectType = MCPBlockEntity
 
 
@@ -561,5 +668,15 @@ __all__ = [
     "MCPBlockEntities",
     "MCPLightData",
     "MCPBitSet",
-    "MCPChunkData"
+    "MCPChunkData",
+    "MCPCommandGraph",
+    "MCCommandHasRedirect",
+    "MCCommandArgumentNode",
+    "MCCommandIsExecutable",
+    "MCCommandLiteralNode",
+    "MCCommandHasSuggestionsType",
 ]
+
+if __name__ == "__main__":
+    a = {"tp": (MCCommandLiteralNode, {}, {"player": (MCCommandArgumentNode | MCCommandIsExecutable, {"parser": "minecraft:player"}, {})})}
+    b = {"eval": (MCCommandLiteralNode, {}, {"code": (MCCommandArgumentNode | MCCommandIsExecutable, {"parser": "brigadier:string", "properties": {"type": 3}}, {})})}
