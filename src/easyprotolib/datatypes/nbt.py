@@ -1,3 +1,5 @@
+from typing import Any
+
 from mutf8 import encode_modified_utf8, decode_modified_utf8
 from easyprotolib.datatypes.basic_datatypes import MCPObject, MCPUnsignedByte, MCPUnsignedShort, MCPByte, MCPShort, MCPInt, MCPLong, MCPFloat, MCPDouble
 
@@ -6,23 +8,35 @@ class MCPNBT(MCPObject):
     """MC-NBT数据类型 NBT基类"""
     id = 0xFF
 
-    def __init__(self, name: str, data):
-        self.name = name
-        super().__init__(data)
+    def __init__(self, name: tuple[str, Any] | str, data=None):
+        if isinstance(name, tuple):
+            self.name = name[0]
+            super().__init__(self.name[1])
+        else:
+            if data is None:
+                raise ValueError("请传入 data")
+            self.name = name
+            super().__init__(data)
 
     def _obj_serialize(self) -> bytearray:
         # [标签ID][标签名字节数][mutf-8编码的标签名][负载]
         # [1B][2B][...][...]
         if self.name == "":
-            return MCPUnsignedByte(self.id) + b'\x00\x00' + self._nbt_serialize()
+            return MCPUnsignedByte(self.id) + b'\x00\x00' + self._nbt_serialize(self.data)
         name = encode_modified_utf8(self.name)
-        return MCPUnsignedByte(self.id) + MCPUnsignedShort(len(name)) + name + self._nbt_serialize()
+        return MCPUnsignedByte(self.id) + MCPUnsignedShort(len(name)) + name + self._nbt_serialize(self.data)
+
+    @classmethod
+    def fast_serialize(cls, data: tuple[str, Any]) -> bytearray | bytes:
+        if data[0] == "":
+            return bytearray(MCPUnsignedByte.fast_serialize(cls.id)) + b'\x00\x00' + cls._nbt_serialize(data[1])
+        name = encode_modified_utf8(data[0])
+        return bytearray(MCPUnsignedByte.fast_serialize(cls.id)) + MCPUnsignedShort(len(name)) + name + cls._nbt_serialize(data[1])
 
     @staticmethod
     def _obj_deserialize(data: bytearray, offset=0) -> tuple[tuple[type, str, ...], int]:
         old_offset = offset
         id = data[offset]
-        # print(offset)
         tag = NBT_tag_id[id]
         if tag == TAGEnd:
             return (tag, "", None), 1
@@ -34,7 +48,8 @@ class MCPNBT(MCPObject):
         result = tag._nbt_deserialize(data[offset:])
         return (tag, name, result[0]), offset + result[1] - old_offset
 
-    def _nbt_serialize(self) -> bytearray:
+    @staticmethod
+    def _nbt_serialize(data) -> bytearray:
         """序列化 NBT 专用, 子类可重写
 
         Return:
@@ -70,8 +85,12 @@ class TAGEnd(MCPNBT):
     def __init__(self):
         super().__init__("", None)
 
-    def _obj_serialize(self) -> bytearray:
-        return bytearray(b'\x00')
+    @classmethod
+    def fast_serialize(cls, data: tuple[str, ...]) -> bytes:
+        return b'\x00'
+
+    def _obj_serialize(self) -> bytes:
+        return b'\x00'
 
     @staticmethod
     def _obj_deserialize(data: bytearray, offset=0) -> tuple[tuple[type[MCPNBT], str, None], int]:
@@ -87,8 +106,9 @@ class TAGByte(MCPNBT):
     def __init__(self, name: str, data: int):
         super().__init__(name, data)
 
-    def _nbt_serialize(self) -> bytes:
-        return MCPByte.fast_serialize(self.data)
+    @staticmethod
+    def _nbt_serialize(data) -> bytes:
+        return MCPByte.fast_serialize(data)
 
     @staticmethod
     def _nbt_deserialize(data: bytearray) -> tuple[int, int]:
@@ -102,8 +122,9 @@ class TAGShort(MCPNBT):
     def __init__(self, name: str, data: int):
         super().__init__(name, data)
 
-    def _nbt_serialize(self) -> bytes:
-        return MCPShort.fast_serialize(self.data)
+    @staticmethod
+    def _nbt_serialize(data) -> bytes:
+        return MCPShort.fast_serialize(data)
 
     @staticmethod
     def _nbt_deserialize(data: bytearray) -> tuple[int, int]:
@@ -117,8 +138,9 @@ class TAGInt(MCPNBT):
     def __init__(self, name: str, data: int):
         super().__init__(name, data)
 
-    def _nbt_serialize(self) -> bytes:
-        return MCPInt.fast_serialize(self.data)
+    @staticmethod
+    def _nbt_serialize(data) -> bytes:
+        return MCPInt.fast_serialize(data)
 
     @staticmethod
     def _nbt_deserialize(data: bytearray) -> tuple[int, int]:
@@ -132,8 +154,9 @@ class TAGLong(MCPNBT):
     def __init__(self, name: str, data: int):
         super().__init__(name, data)
 
-    def _nbt_serialize(self) -> bytes:
-        return MCPLong.fast_serialize(self.data)
+    @staticmethod
+    def _nbt_serialize(data) -> bytes:
+        return MCPLong.fast_serialize(data)
 
     @staticmethod
     def _nbt_deserialize(data: bytearray) -> tuple[int, int]:
@@ -147,8 +170,9 @@ class TAGFloat(MCPNBT):
     def __init__(self, name: str, data: float):
         super().__init__(name, data)
 
-    def _nbt_serialize(self) -> bytes:
-        return MCPFloat.fast_serialize(self.data)
+    @staticmethod
+    def _nbt_serialize(data) -> bytes:
+        return MCPFloat.fast_serialize(data)
 
     @staticmethod
     def _nbt_deserialize(data: bytearray) -> tuple[float, int]:
@@ -162,8 +186,9 @@ class TAGDouble(MCPNBT):
     def __init__(self, name: str, data: float):
         super().__init__(name, data)
 
-    def _nbt_serialize(self) -> bytes:
-        return MCPDouble.fast_serialize(self.data)
+    @staticmethod
+    def _nbt_serialize(data) -> bytes:
+        return MCPDouble.fast_serialize(data)
 
     @staticmethod
     def _nbt_deserialize(data: bytearray) -> tuple[float, int]:
@@ -174,12 +199,10 @@ class TAGArray(MCPNBT):
     """MC-NBT数据类型 数组基类"""
     tag_type: MCPObject = MCPObject
 
-    def _nbt_serialize(self) -> bytearray:
+    @classmethod
+    def _nbt_serialize(cls, data) -> bytearray:
         # [元素个数]([元素负载][...])
-        result = bytearray(MCPInt.fast_serialize(len(self.data)))
-        for i in self.data:
-            result += self.tag_type(i)
-        return result
+        return bytearray(MCPInt.fast_serialize(len(data))) + bytearray().join([cls.tag_type(i).serialize() for i in data])
 
     # noinspection DuplicatedCode
     @classmethod
@@ -206,9 +229,10 @@ class TAGString(MCPNBT):
     def __init__(self, name: str, data: str):
         super().__init__(name, data)
 
-    def _nbt_serialize(self) -> bytes:
+    @staticmethod
+    def _nbt_serialize(data) -> bytes:
         # [字符串字节数][mutf-8编码的字符串]
-        data = encode_modified_utf8(self.data)
+        data = encode_modified_utf8(data)
         return MCPUnsignedShort.fast_serialize(len(data)) + data
 
     @staticmethod
@@ -225,16 +249,17 @@ class TAGList(MCPNBT):
     def __init__(self, name: str, data: list[MCPNBT]):
         super().__init__(name, data)
 
-    def _nbt_serialize(self) -> bytearray:
+    @staticmethod
+    def _nbt_serialize(data) -> bytearray:
         # [元素类型ID][元素个数]([元素负载][...])
-        if len(self.data) == 0:
+        if len(data) == 0:
             # 第1个 0x00 表示列表元素ID(无符号Byte), 在列表为空时, 元素ID始终为 0x00
             # 后4个 0x00 表示列表元素个数(Int), 在列表为空时, 元素个数始终为 0
             return bytearray(5)
         result = bytearray(0)
-        result += MCPUnsignedByte.fast_serialize(self.data[0].id)
-        result += MCPInt.fast_serialize(len(self.data))
-        for i in self.data:
+        result += MCPUnsignedByte.fast_serialize(data[0].id)
+        result += MCPInt.fast_serialize(len(data))
+        for i in data:
             result += i._nbt_serialize()
         return result
 
@@ -259,13 +284,10 @@ class TAGCompound(MCPNBT):
     def __init__(self, name: str, data: list[MCPNBT]):
         super().__init__(name, data)
 
-    def _nbt_serialize(self) -> bytearray:
+    @staticmethod
+    def _nbt_serialize(data: list[MCPNBT]) -> bytearray:
         # ([元素][...])[结束标签]
-        result = bytearray(b'')
-        for i in self.data:
-            result += i
-        result += TAGEnd()
-        return result
+        return bytearray().join([i.serialize() for i in data]) + b'\x00'     # b'\x00': TAGEnd()
 
     @staticmethod
     def _nbt_deserialize(data: bytearray) -> tuple[list, int]:

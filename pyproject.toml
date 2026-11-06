@@ -1,20 +1,20 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "easyprotolib"
-version = "0.3.2"
+version = "0.5.0"
 authors = [
     { name = "baiYunMieAwa", email = "baiyunmie@163.com" },
 ]
 description = "A Minecraft protocol library written in Python."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT License" }
+license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [

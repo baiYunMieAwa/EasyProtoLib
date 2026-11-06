@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .gameobjects import MCBlock
-    from .data_packet import MCDataPacket
+    from .data_packet import MCPacket
 
 
 class MCBlockEntitiesMap:
@@ -50,15 +50,24 @@ class MCBlockMap:
 
 
 class MCDataPacketMap:
-    __packets: dict[tuple[int, int, int], type['MCDataPacket'] | None] = {}
+    __packets: dict[tuple[int, int, int], type['MCPacket'] | None] = {}
 
     @classmethod
-    def set(cls, state: int, packet_id: int, direction: int, packet: type['MCDataPacket']) -> None:
+    def set(cls, state: int, packet_id: int, direction: int, packet: type['MCPacket']) -> None:
         cls.__packets[(state, packet_id, direction)] = packet
 
     @classmethod
-    def get(cls, state: int, packet_id: int, direction: int) -> type['MCDataPacket']:
+    def get(cls, state: int, packet_id: int, direction: int) -> type['MCPacket']:
         return cls.__packets[(state, packet_id, direction)]
+
+
+class MCConnectMap:
+    __id = -1
+
+    @classmethod
+    def get_new_id(cls):
+        cls.__id += 1
+        return cls.__id
 
 
 __all__ = [

@@ -2,7 +2,7 @@ EasyProtoLib 命名约定
 ================
 
 > 这里只是介绍一下库内部的命名规则，免得大家困惑，没有要求大家也遵守这个命名约定的意思:3。
-> 大家完全可以按照自己的风格命名自己定义的数据类型和数据包等等:3。
+> 大家完全可以按照自己的风格命名自己定义的数据类型和数据包等等:3。不过贡献者最好按照这个命名约定来:3。
 
 ---
 
@@ -38,7 +38,7 @@ EasyProtoLib 命名约定
 前缀后接数据包在 Wiki 中的名称，有时会适当变形。如果有重名，则再追加数据包状态后缀。
 
 `C`/`S` 意为传输方向，即`Clientbound`/`Serverbound`。  
-状态后缀可能有 `-State` `-Login` `-Play` 等。
+状态后缀有 `-State` `-Login` `-Play` 等。
 
 示例：`MCCJoinGame` `MCSTeleportConfirm` `MCCDisconnectPlay` `MCCDisconnectLogin`
 
@@ -56,4 +56,4 @@ EasyProtoLib 命名约定
 ## 常量
 常量使用常量命名法。
 
-示例：`IS_FULL_BLOCK` `SIDE_CLIENT` `C2S` `STATE_PLAY` `MCCommandHasRedirect`
+示例：`IS_FULL_BLOCK` `SIDE_CLIENT` `C2S` `STATE_PLAY` `COMMAND_HAS_REDIRECT`

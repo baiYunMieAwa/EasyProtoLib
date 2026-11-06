@@ -7,7 +7,7 @@ from easyprotolib.map import MCBlockMap
 
 
 class MCChunk:
-    def __init__(self, x, z, blocks: list[MCBlock | int], biomes: list[MCBiome | int], light_data: MCPLightData, heightmap: MCPHeightMap, chunk_section_count: int = 24, min_y: int = -64):
+    def __init__(self, x, z, blocks: list[MCBlock | int], biomes: list[MCBiome | int], light_data: MCPLightData, heightmap: MCPHeightMap = None, chunk_section_count: int = 24, min_y: int = -64):
         if isinstance(blocks[0], MCBlock):
             blocks = [block.get_protocol_id() for block in blocks]
         if isinstance(biomes[0], MCBiome):
@@ -16,6 +16,11 @@ class MCChunk:
         self.x = x
         self.z = z
         self.chunk_sections = [MCPChunkSection(x, (i >> 6) + (min_y >> 4), z, blocks[i << 6:(i << 6) + 4096], biomes[i:i + 64], air_count[i >> 6]) for i in range(0, chunk_section_count << 6, 64)]
+        if heightmap is None:
+            i = len(self.chunk_sections) - 1
+            while self.chunk_sections[i].is_empty():
+                i -= 1
+            raise RuntimeError("TODO")      # TODO
         self.min_y = min_y
         self.light_data = light_data
         self.heightmap = heightmap

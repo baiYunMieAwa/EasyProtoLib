@@ -9,11 +9,12 @@
   - [安装](install.md)
   - [命名约定](naming-convention.md)
   - [基础教程](basic-tutorials/index.md)
-    - [打包你的第一个数据包](basic-tutorials/pack-your-the-first-packet.md)
+    - [发送你的第一个数据包](basic-tutorials/send-your-first-packet.md)
+    - [接收你的第一个数据包](basic-tutorials/receive-your-first-packet.md)
     - [搭建你的第一个 MC 机器人](basic-tutorials/build-your-first-minecraft-bot.md)
     - [搭建你的第一个 MC 服务端](basic-tutorials/set-up-your-first-minecraft-server.md)
   - [进阶教程](advanced-tutorials/index.md)
-    - 自定义基本数据类型
+    - 自定义原子数据类型
     - 自定义数组数据类型
     - 自定义数据包
   - API
@@ -21,10 +22,12 @@
       - 基本数据类型
       - 数组数据类型
       - 高级数据类型
+      - NBT数据类型
     - 游戏对象
       - 方块
       - 生物群系
       - 区块
+      - 命令
     - 数据包
     - 注册表
     - 异常

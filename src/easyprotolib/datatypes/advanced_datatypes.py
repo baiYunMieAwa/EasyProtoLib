@@ -1,7 +1,7 @@
 from .basic_datatypes import MCPObject, MCPVarInt, MCPUnsignedByte, MCPShort, MCPInt, MCPLong
 from .basic_datatypes import MCPObjectSetter, MCPString, MCPDouble, MCPFloat, MCPBoolean
 from .array_datatypes import MCPObjectArray, MCPLongArray, MCPUnsignedByteArrayArray, MCPVarIntArray, MCPByte, MCPIdentifier
-from easyprotolib.datatypes.nbt import TAGLongArray, TAGCompound, MCPNBT
+from .nbt import TAGLongArray, TAGCompound, MCPNBT
 from easyprotolib.map import MCBlockEntitiesMap
 
 from typing import TYPE_CHECKING, Any
@@ -13,11 +13,11 @@ if TYPE_CHECKING:
     from easyprotolib.gameobjects.block import MCBlock
 
 
-MCCommandLiteralNode        = 0x01
-MCCommandArgumentNode       = 0x02
-MCCommandIsExecutable       = 0x04
-MCCommandHasRedirect        = 0x08
-MCCommandHasSuggestionsType = 0x10
+COMMAND_LITERAL_NODE            = 0x01
+COMMAND_ARGUMENT_NODE           = 0x02
+COMMAND_IS_EXECUTABLE           = 0x04
+COMMAND_HAS_REDIRECT            = 0x08
+COMMAND_HAS_SUGGESTIONS_TYPE    = 0x10
 
 
 def _pack(l: list[int], bpe: int) -> list[int]:
@@ -94,25 +94,12 @@ def _unpack(l: list[int], bpe: int, length: int) -> list[int]:
 class MCPCommandGraph(MCPObject):
     """MC数据类型 命令图"""
 
-    def __init__(self, data: dict[str, tuple[int, dict[str, str | bytearray | bytes | MCPObject], dict[str, ...]]]):
-        data = {'': (0, {}, data)}
-        def setter(d, j=-1):
-            new_data = []
-            for i in d:
-                j += 1
-                t = setter(d[i][2], j)
-                l = [i[4] for i in t[0]]
-                new_data.append((i, d[i][0], d[i][1], l, j))
-                new_data += t[0]
-                j = t[1]
-            return new_data, j
-
-        new_data = sorted(setter(data)[0], key=lambda x: x[4])
-        super().__init__(new_data)
+    def __init__(self, data: list):
+        super().__init__(data)
 
     def _obj_serialize(self) -> bytearray:
         data = self.data
-        data: list[tuple[str, int, dict[str, str | dict], list, int]]
+        data: list[tuple[str, int, dict[str, str | dict | int], list, int]]
         num = data[-1][4]
         result = MCPVarInt.fast_serialize(num + 1)
         # root
@@ -125,12 +112,10 @@ class MCPCommandGraph(MCPObject):
             node_type = node[1]
             result += MCPByte(node_type)
             result += MCPVarIntArray(node[3])
-            if node_type & MCCommandHasRedirect:
-                # result += MCPVarInt(node[2]["redirect"])
-                # TODO  还未实现重定向节点
-                pass
+            if node_type & COMMAND_HAS_REDIRECT:
+                result += MCPVarInt(node[2]["redirect"])
             result += MCPString(name)
-            if node_type & MCCommandArgumentNode:
+            if node_type & COMMAND_ARGUMENT_NODE:
                 parser = node[2]["parser"].strip().lower()
                 result += MCPIdentifier(parser)
                 if "properties" in node[2]:
@@ -141,9 +126,9 @@ class MCPCommandGraph(MCPObject):
                         if parser_type in ("double", "float", "integer", "long"):
                             result += MCPByte(properties["flags"])
                             num_type = {"double": MCPDouble, "float": MCPFloat, "integer": MCPInt, "long": MCPLong}[parser_type]
-                            if properties["flags"] & 0x01 == 0x01:
+                            if properties["flags"] & 0x01:
                                 result += num_type(properties["min"])
-                            if properties["flags"] & 0x02 == 0x02:
+                            if properties["flags"] & 0x02:
                                 result += num_type(properties["max"])
                         elif parser_type == "string":
                             if 0 <= properties["type"] <= 2:
@@ -159,14 +144,14 @@ class MCPCommandGraph(MCPObject):
                             result += MCPIdentifier(properties["registry"])
                     else:
                         raise ValueError("parser 类型不合法")
-            if node_type & MCCommandHasSuggestionsType:
-                result += MCPIdentifier(node[2]["type"])
-                # mc客户端接受的类型:
-                # minecraft:ask_server
-                # minecraft:all_recipes
-                # minecraft:available_sounds
-                # minecraft:available_biomes
-                # minecraft:summonable_entities
+                if node_type & COMMAND_HAS_SUGGESTIONS_TYPE:
+                    result += MCPIdentifier(node[2]["type"])
+                    # mc客户端接受的类型:
+                    # minecraft:ask_server
+                    # minecraft:all_recipes
+                    # minecraft:available_sounds
+                    # minecraft:available_biomes
+                    # minecraft:summonable_entities
 
         result += MCPVarInt(0)   # 根节点索引
         return result
@@ -389,16 +374,13 @@ class MCPHeightMap(MCPObject, _WorldDataMixin):
         super().__init__(heightmap)
 
     def _obj_serialize(self) -> bytearray:
-        heightmap_ = self.data
-        world_height = self.world_height
-        bits_per_entry = math.ceil(math.log2(world_height + 1))
+        bits_per_entry = math.ceil(math.log2(self.world_height + 1))
         result = []
-        for name in heightmap_:
-            heightmap = heightmap_[name]
-            if len(heightmap) != 256:
+        for name in self.data:
+            if len(self.data[name]) != 256:
                 raise ValueError("高度图必须恰好包含256个条目(16*16)")
-            result.append(TAGLongArray(name, _pack(heightmap, bits_per_entry)))
-        return TAGCompound("", result).serialize()  # 0~1ms
+            result.append(TAGLongArray(name, _pack(self.data[name], bits_per_entry)))
+        return TAGCompound.fast_serialize(("", result))  # 0~1ms
 
     @classmethod
     def _obj_deserialize(cls, data: bytearray, offset=0) -> tuple[dict[str, list[int]], int]:
@@ -441,7 +423,7 @@ class MCPPaletteContainer(MCPObject):
         bpe = max(self.min_bpe1, math.ceil(math.log2(len(i))))
         if bpe > self.max_bpe:
             # 直接模式
-            bpe = self.min_bpe2
+            bpe = max(self.min_bpe2, bpe)
             result += MCPUnsignedByte.fast_serialize(bpe)
             result += _pack_to_bytes_fast(data, bpe)    # 在1.21.5+, 这个数组不带长度前缀, 不过我们实现的协议版本是1.18.2
         else:
@@ -458,34 +440,102 @@ class MCPPaletteContainer(MCPObject):
 
     # noinspection PyUnusedLocal
     def __setitem__(self, key: tuple[int, int, int] | int, value: int):
-        raise RuntimeError("TODO")
         bpe = self.data[0]
         if not isinstance(key, int):
-            key = key[0] + (key[2] << 4) + (key[1] << 8)
+            key = key[0] + (key[2] << 4) + (key[1] << 8)  # key: tuple[x: int, y: int, z: int]
         if bpe == 0:
             # 单值模式
-            block, offset = MCPVarInt.deserialize(self.data, 1)
+            block, _ = MCPVarInt.deserialize(self.data, 1)
             if value == block:
                 return
             # 转间接模式
+            new_bpe = max(self.min_bpe1, 1)
             result = bytearray(0)
-            result += MCPUnsignedByte.fast_serialize(bpe)
-            result += MCPVarInt.fast_serialize(2)
-            result += MCPVarInt.fast_serialize(block)
-            result += MCPVarInt.fast_serialize(value)
-            data = [0] * self.item_length
+            result += MCPUnsignedByte.fast_serialize(new_bpe)
+            result += MCPVarIntArray.fast_serialize([block, value])
+            data = [0] * self.length
             data[key] = 1
-            result += _pack_to_bytes_fast(data, bpe)
+            result += _pack_to_bytes_fast(data, new_bpe)
             self.data = result
+            self.delete_cache()
         elif bpe > self.max_bpe:
             # 直接模式
-            old_data = self.data[1 + ((key * bpe) >> 3): 1 + (((key + 1) * bpe + 7) >> 3)]
-            mask = ((1 << (bpe + 1)) - 1)
-            # self.data[1 + ((key * bpe) >> 3): 1 + (((key + 1) * bpe + 7) >> 3)] = ...
-            # TODO
+            long_length, long_len_size = MCPVarInt.deserialize(self.data, 1)
+            long_start = 1 + long_len_size
+            entries_per_long = 64 // bpe
+            if value >= (1 << bpe):
+                # 升级 BPE 后整体重打包
+                longs = [int.from_bytes(self.data[long_start + i * 8: long_start + i * 8 + 8],
+                                        'big', signed=False) for i in range(long_length)]
+                all_values = _unpack(longs, bpe, self.length)
+                all_values[key] = value
+                new_bpe = min(max(self.min_bpe2, math.ceil(math.log2(max(all_values) + 1))), 64)
+                result = bytearray()
+                result += MCPUnsignedByte.fast_serialize(new_bpe)
+                result += _pack_to_bytes_fast(all_values, new_bpe)
+                self.data = result
+            else:
+                long_idx = key // entries_per_long
+                bit_idx = (key % entries_per_long) * bpe
+                long_offset = long_start + long_idx * 8
+                long_val = int.from_bytes(self.data[long_offset:long_offset + 8], 'big', signed=False)
+                mask = ((1 << bpe) - 1) << bit_idx
+                if (long_val & mask) == (value << bit_idx):
+                    return
+                long_val = (long_val & ~mask) | (value << bit_idx)
+                self.data[long_offset:long_offset + 8] = long_val.to_bytes(8, 'big', signed=False)
+            self.delete_cache()
         else:
             # 间接模式
-            pass
+            palette, palette_len = MCPVarIntArray._obj_deserialize(self.data, 1)
+            long_length, long_len_size = MCPVarInt.deserialize(self.data, 1 + palette_len)
+            long_start = 1 + palette_len + long_len_size
+            try:
+                new_index = palette.index(value)
+            except ValueError:
+                # 调色板中没有该值，需要添加
+                new_index = len(palette)
+                palette.append(value)
+                new_bpe = bpe
+                if new_index >= (1 << bpe):
+                    new_bpe = max(self.min_bpe1, math.ceil(math.log2(len(palette))))
+                if new_bpe > self.max_bpe:
+                    # 转直接模式
+                    longs = [int.from_bytes(self.data[long_start + i * 8: long_start + i * 8 + 8], 'big', signed=False)
+                             for i in range(long_length)]
+                    all_indices = _unpack(longs, bpe, self.length)
+                    all_values = [palette[j] for j in all_indices]
+                    all_values[key] = value
+                    direct_bpe = max(self.min_bpe2, math.ceil(math.log2(max(all_values) + 1)))
+                    direct_bpe = min(direct_bpe, 64)
+                    result = bytearray(0)
+                    result += MCPUnsignedByte.fast_serialize(direct_bpe)
+                    result += _pack_to_bytes_fast(all_values, direct_bpe)
+                    self.data = result
+                    self.delete_cache()
+                    return
+                # 用新 BPE 重新打包
+                longs = [int.from_bytes(self.data[long_start + i * 8: long_start + i * 8 + 8], 'big', signed=False)
+                         for i in range(long_length)]
+                all_indices = _unpack(longs, bpe, self.length)
+                all_indices[key] = new_index
+                result = bytearray(0)
+                result += MCPUnsignedByte.fast_serialize(new_bpe)
+                result += MCPVarIntArray.fast_serialize(palette)
+                result += _pack_to_bytes_fast(all_indices, new_bpe)
+                self.data = result
+                self.delete_cache()
+                return
+            # 修改对应 long 中的位
+            entries_per_long = 64 // bpe
+            long_idx = key // entries_per_long
+            bit_idx = (key % entries_per_long) * bpe
+            long_offset = long_start + long_idx * 8
+            long_val = int.from_bytes(self.data[long_offset:long_offset + 8], 'big', signed=False)
+            mask = ((1 << bpe) - 1) << bit_idx
+            long_val = (long_val & ~mask) | (new_index << bit_idx)
+            self.data[long_offset:long_offset + 8] = long_val.to_bytes(8, 'big', signed=False)
+            self.delete_cache()
 
     def __getitem__(self, item):
         bpe, offset = MCPUnsignedByte._obj_deserialize(self.data)
@@ -579,6 +629,9 @@ class MCPChunkSection(MCPObject):
         offset += l
         return (block_count, block_palette, biome_palette), offset - old_offset
 
+    def is_empty(self):
+        return self.air_count == 4096
+
 
 class MCPChunkData(MCPObject):
     """MC数据类型 区块数据"""
@@ -670,13 +723,13 @@ __all__ = [
     "MCPBitSet",
     "MCPChunkData",
     "MCPCommandGraph",
-    "MCCommandHasRedirect",
-    "MCCommandArgumentNode",
-    "MCCommandIsExecutable",
-    "MCCommandLiteralNode",
-    "MCCommandHasSuggestionsType",
+    "COMMAND_HAS_REDIRECT",
+    "COMMAND_ARGUMENT_NODE",
+    "COMMAND_IS_EXECUTABLE",
+    "COMMAND_LITERAL_NODE",
+    "COMMAND_HAS_SUGGESTIONS_TYPE",
 ]
 
 if __name__ == "__main__":
-    a = {"tp": (MCCommandLiteralNode, {}, {"player": (MCCommandArgumentNode | MCCommandIsExecutable, {"parser": "minecraft:player"}, {})})}
-    b = {"eval": (MCCommandLiteralNode, {}, {"code": (MCCommandArgumentNode | MCCommandIsExecutable, {"parser": "brigadier:string", "properties": {"type": 3}}, {})})}
+    a = {"tp": (COMMAND_LITERAL_NODE, {}, {"player": (COMMAND_ARGUMENT_NODE | COMMAND_IS_EXECUTABLE, {"parser": "minecraft:player"}, {})})}
+    b = {"eval": (COMMAND_LITERAL_NODE, {}, {"code": (COMMAND_ARGUMENT_NODE | COMMAND_IS_EXECUTABLE, {"parser": "brigadier:string", "properties": {"type": 3}}, {})})}

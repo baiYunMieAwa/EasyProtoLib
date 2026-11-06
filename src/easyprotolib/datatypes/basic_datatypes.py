@@ -130,9 +130,43 @@ class MCPObject:
         if cls == MCPObject:
             return
         if cls.length > 0:
-            def get_length(_cls, _data: None): return cls.length
+            def get_length(_cls, _data: None = None, _offset: int = 0): return cls.length
             cls.get_length = get_length
         cls.deserialize = cls._obj_deserialize
+
+
+class MCPVoid(MCPObject):
+    enable_cache = False
+
+    @staticmethod
+    def fast_serialize(data) -> bytearray | bytes:
+        return b''
+
+    @staticmethod
+    def _obj_deserialize(data: bytearray, offset: int = 0) -> tuple[Any, int]:
+        return None, 0
+
+    def _obj_serialize(self) -> bytearray | bytes:
+        return b''
+
+    @classmethod
+    def get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        return 0
+
+    def __bytes__(self):
+        return b''
+
+    def __add__(self, other):
+        return other
+
+    def __radd__(self, other):
+        return other
+
+    def __str__(self):
+        return ""
+
+    def __repr__(self):
+        return "<Minecraft Protocol Void Type>"
 
 
 class MCPBoolean(MCPObject):
@@ -505,6 +539,11 @@ class MCPJSONTextComponent(MCPString):
                 raise ValueError("data 含有不可序列化的对象")
         super().__init__(data)
         self.length = len(self.serialize())
+
+    @staticmethod
+    def _obj_deserialize(data: bytearray, offset=0) -> tuple[str, int]:
+        data, length = super()._obj_deserialize(data, offset)
+        return json.loads(data), length
 
 
 class MCPPosition(MCPLong):

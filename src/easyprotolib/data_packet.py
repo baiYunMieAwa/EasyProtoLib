@@ -5,12 +5,14 @@ from .datatypes import MCPHeightMap, MCPChunkData, MCPBlockEntities, MCPLightDat
 from .datatypes.basic_datatypes import *
 from .datatypes.advanced_datatypes import MCPCommandGraph
 from .err import MCPacketNotFound, MCUnpackError
-from .map import MCDataPacketMap
+from .map import MCDataPacketMap, MCConnectMap
 import time
 import random
+import zlib
 
-SIDE_SERVER = C2S = 0
-SIDE_CLIENT = S2C = 1
+
+SIDE_SERVER  = C2S  = 0
+SIDE_CLIENT  = S2C  = 1
 
 STATE_HANDSHAKE     = 0
 STATE_STATE         = 1
@@ -19,16 +21,22 @@ STATE_PLAY          = 3
 STATE_CONFIGURATION = 4
 
 
-class MCNetConfig:
-    """配置类 - 管理MC网络连接的方向和状态
+class MCNetConnect:
+    """连接类 - 管理MC网络连接
 
     Attributes:
         state: 连接所处的状态
         direction: 连接方向, 负责指明谁是客户端, 谁是服务端
+        compression_threshold: 压缩阈值, 当数据包长度 >= compression_threshold >= 0时, 将压缩数据包
+        id: 连接标识符
     """
-    def __init__(self, state: int, direction: int):
+    def __init__(self, direction: int, state: int = STATE_HANDSHAKE, id: int = None):
         self.state = state
         self.direction = direction
+        self.compression_threshold = -1
+        if id is None:
+            id = MCConnectMap.get_new_id()
+        self.id = id
 
     def set_state(self, new_state: int):
         """设置连接状态
@@ -38,8 +46,135 @@ class MCNetConfig:
         """
         self.state = new_state
 
+    def set_compression(self, threshold: int):
+        self.compression_threshold = threshold
 
-class MCDataPacket:
+    def pack(self, packet: 'MCPacket') -> bytearray:
+        """数据包构建函数
+        
+        Args:
+            packet: 数据包类
+
+        Return:
+            构建结果
+        """
+        result = bytearray(b'')
+        for index, field in enumerate(packet.fields):
+            value = None
+            field_name = packet._fields_name[index]
+            field_type = field[1]
+            field_default = field[2]
+            for key in packet.data:
+                if self._standardization(key) == field_name:
+                    value = packet.data[key]
+            if value is None:
+                value = field_default
+            elif value is None:
+                raise ValueError("字段不完整")
+            elif not isinstance(value, field_type):
+                if isinstance(value, MCPObject):
+                    raise TypeError(f"字段 {field[0]} 类型有误: 预期 {field_type.__name__}, 实际 {value.__name__}")
+                else:
+                    value = field_type(value)
+            if field_type.__MCObjectSetter__:
+                value = MCPObjectDuplicator(field_type, value)
+            result += value
+        packet_id = MCPVarInt.fast_serialize(packet.packet_id)
+        result[:0] = packet_id
+
+        if self.compression_threshold < 0:
+            result[:0] = MCPVarInt.fast_serialize(len(result))
+            packet.length = len(result)
+            return result
+
+        if len(result) >= self.compression_threshold:  # 需压缩
+            data_length = MCPVarInt.fast_serialize(len(result))
+            result = zlib.compress(result)
+        else:
+            data_length = MCPVarInt.fast_serialize(0)
+        packet_length = MCPVarInt.fast_serialize(len(result) + len(data_length))
+        return packet_length + data_length + result
+
+    def unpack(self, data: bytearray | bytes) -> dict | None:
+        """数据包解析函数
+
+        Return:
+            解析结果, 如为 None 则代表数据包不完整
+
+        Raises:
+            MCPacketNotFound: 当找不到满足指定条件(方向, 状态, 数据包ID)的数据包类时抛出
+            MCUnpackError: 当解析数据包出错时抛出
+            zlib.error: 当解压数据包出错时爆出
+        """
+        if len(data) == 0:
+            return None
+
+        try:
+            if self.compression_threshold >= 0:
+                packet_length = MCPVarInt.deserialize(data)
+                data_length = MCPVarInt.deserialize(data, packet_length[1])
+                if len(data) < packet_length[0] + packet_length[1]:
+                    return None
+                data = data[packet_length[1] + data_length[1]:packet_length[0] + packet_length[1]]
+                if data_length[0] != 0:
+                    data = zlib.decompress(data)
+                packet_head = 0
+                length = data_length[0]
+            else:
+                length, packet_head = MCPVarInt.deserialize(data)
+                if len(data) < length + packet_head:
+                    return None
+        except EOFError:
+            return None
+
+        try:
+            pid, data_head = MCPVarInt.deserialize(data, packet_head)
+        except EOFError:
+            return None
+        try:
+            packet = MCDataPacketMap.get(self.state, pid, self.direction)
+        except KeyError:
+            raise MCPacketNotFound(
+                f"找不到满足以下条件的数据包类: "
+                f"方向: {("Client -> Server", "Server -> Client")[self.direction]}; 状态: {self.state}; 包ID: {hex(pid)}. ")
+        try:
+            # print(data[packet_head + data_head:length + packet_head][:1000])
+            result = packet._packet_unpack(self, data[packet_head + data_head:length + packet_head])
+        except Exception as e:
+            raise MCUnpackError(f"解析 {packet.__name__} 时发生错误! 错误: {e.__class__.__name__}: {e}")
+        return {"packet": packet, "length": length + packet_head, "result": result, "pid": packet.packet_id}
+
+    @staticmethod
+    def _standardization(name: str):
+        """字段名标准化函数"""
+        return name.replace(" ", "").replace("_", "").replace("-", "").lower()
+
+    @classmethod
+    def set_standardization(cls, func: Callable):
+        """自定义字段名匹配机制
+
+        Args:
+            func: 自定义的字段名标准化函数, 接受一个str参数, 返回一个str
+        """
+        cls.__characterization = func
+
+    @classmethod
+    def disable_standardization(cls):
+        """禁用字段名模糊匹配"""
+        cls.__characterization = lambda x: x
+
+
+class MCNetConnect2Server(MCNetConnect):
+    def __init__(self, state: int = STATE_HANDSHAKE):
+        super().__init__(SIDE_CLIENT, state)
+
+
+class MCNetConnect2Client(MCNetConnect):
+    def __init__(self, state: int = STATE_HANDSHAKE):
+        super().__init__(SIDE_SERVER, state)
+
+
+class MCPacket:
     """数据包类 - 构建和解析数据包
 
     Attributes:
@@ -57,94 +192,12 @@ class MCDataPacket:
         self.data = kwargs
         self.length = -1
 
-    @staticmethod
-    def __characterization(a):
-        """字段名标准化函数"""
-        return a.replace(" ", "").replace("\t", "").replace("_", "").replace("-", "").lower()
-
     @classmethod
-    def set_characterization(cls, func: Callable):
-        """自定义字段名匹配机制
-
-        Args:
-            func: 自定义的字段名标准化函数, 接受一个str参数, 返回一个str
-        """
-        cls.__characterization = func
-
-    @classmethod
-    def disable_characterization(cls):
-        """禁用字段名模糊匹配"""
-        cls.__characterization = lambda x: x
-
-    def pack(self) -> bytearray:
-        """数据包构建函数
-
-        Return:
-            构建结果
-        """
-        result = bytearray(b'')
-        for field in self.fields:
-            value = None
-            for key in self.data:
-                if self.__characterization(key) == self.__characterization(field[0]):
-                    value = self.data[key]
-            if value is None:
-                value = field[2]
-            if isinstance(value, str) and value.upper() == "PASS":
-                continue
-            elif value is None:
-                raise ValueError("字段不完整")
-            elif not isinstance(value, field[1]):
-                raise TypeError(f"字段 {field[0]} 类型有误: 预期 {field[1].__name__}, 实际 {value.__name__}")
-            if field[1].__MCObjectSetter__:
-                value = MCPObjectDuplicator(field[1], value)
-            result += value
-        packet_id = MCPVarInt.fast_serialize(self.packet_id)
-        result[:0] = MCPVarInt.fast_serialize(len(result) + len(packet_id)) + packet_id
-        self.length = len(result)
-        return result
-
-    @staticmethod
-    def unpack(config: MCNetConfig, data: bytearray | bytes) -> dict | None:
-        """数据包解析函数
-
-        Return:
-            解析结果, 如为 None 则代表数据包不完整
-
-        Raises:
-            MCPacketNotFound: 当找不到满足指定条件(方向, 状态, 数据包ID)的数据包类时抛出
-            MCUnpackError: 当解析数据包出错时抛出
-        """
-        if len(data) == 0:
-            return None
-        try:
-            length = MCPVarInt._obj_deserialize(data)
-        except EOFError:
-            return None
-        if len(data) < length[0] + length[1]:
-            return None
-        # print(data[length[1]:length[0]+length[1]])
-        try:
-            pid = MCPVarInt._obj_deserialize(data[length[1]:])
-        except EOFError:
-            return None
-        try:
-            packet = MCDataPacketMap.get(config.state, pid[0], config.direction)
-        except KeyError:
-            raise MCPacketNotFound(
-                f"找不到满足以下条件的数据包类: "
-                f"方向: {("Client -> Server", "Server -> Client")[config.direction]}; 状态: {config.state}; 包ID: {hex(pid[0])}. ")
-        try:
-            result = packet._packet_unpack(data[length[1] + pid[1]:])
-        except Exception as e:
-            raise MCUnpackError(f"解析 {packet.__name__} 时发生错误! 错误: {e.__class__.__name__}: {e}")
-        return {"packet": packet, "length": length[0] + length[1], "result": result, "pid": packet.packet_id}
-
-    @classmethod
-    def _packet_unpack(cls, data: bytearray | bytes) -> dict:
+    def _packet_unpack(cls, connect: MCNetConnect, data: bytearray | bytes) -> dict:
         """数据包的默认解析方法, 子类可重写
 
         Args:
+            connect: 连接
             data: 去掉数据包头后的原始字节流
 
         Return:
@@ -162,8 +215,8 @@ class MCDataPacket:
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if cls.__name__ in (
-             'MCCDataPacket',
-             'MCSDataPacket',
+             'MCCPacket',
+             'MCSPacket',
              'MCCStateDataPacket',
              'MCCLoginDataPacket',
              'MCCPlayDataPacket',
@@ -180,43 +233,44 @@ class MCDataPacket:
             raise ValueError(f"{cls.__name__} 未设定合法的 `state` 值")
         if cls.direction not in (0, 1):
             raise ValueError(f"{cls.__name__} 未设定合法的 `direction` 值")
+        cls._fields_name = [MCNetConnect._standardization(name) for name, field_type, default in cls.fields]
         MCDataPacketMap.set(cls.state, cls.packet_id, cls.direction, cls)
 
 
-class MCCDataPacket(MCDataPacket):
+class MCCPacket(MCPacket):
     direction = S2C
 
-class MCSDataPacket(MCDataPacket):
+class MCSPacket(MCPacket):
     direction = C2S
 
 
-class MCCStateDataPacket(MCCDataPacket):
+class MCCStateDataPacket(MCCPacket):
     state = 1
 
-class MCCLoginDataPacket(MCCDataPacket):
+class MCCLoginDataPacket(MCCPacket):
     state = 2
 
-class MCCPlayDataPacket(MCCDataPacket):
+class MCCPlayDataPacket(MCCPacket):
     state = 3
 
-class MCCConfigurationDataPacket(MCCDataPacket):
+class MCCConfigurationDataPacket(MCCPacket):
     # 1.20.2 时加入
     state = 4
 
 
-class MCSHandshakeDataPacket(MCSDataPacket):
+class MCSHandshakeDataPacket(MCSPacket):
     state = 0
 
-class MCSStateDataPacket(MCSDataPacket):
+class MCSStateDataPacket(MCSPacket):
     state = 1
 
-class MCSLoginDataPacket(MCSDataPacket):
+class MCSLoginDataPacket(MCSPacket):
     state = 2
 
-class MCSPlayDataPacket(MCSDataPacket):
+class MCSPlayDataPacket(MCSPacket):
     state = 3
 
-class MCSConfigurationDataPacket(MCSDataPacket):
+class MCSConfigurationDataPacket(MCSPacket):
     # 1.20.2 时加入
     state = 4
 
@@ -330,25 +384,16 @@ class MCCKeepAlive(MCCPlayDataPacket):
     packet_id = 0x21
 
 
-class MCCChunkDataAndUpdateLight(MCCPlayDataPacket):
-    fields = [
-        ("X", MCPInt, None),
-        ("Z", MCPInt, None),
-        ("Heightmap", MCPHeightMap, None),                   # 0~1ms
-        ("Data", MCPChunkData, None),                        # 300~360ms -> 140~180ms -> 80~110ms -> 2ms
-        ("BlockEntities", MCPBlockEntities, MCPBlockEntities([])),
-        # 尚未实现实体方块字段, 所以实体方块数量始终为0      (归档)实体方块字段已于 2026/7/23 获得完整实现
-        ("TrustEdges", MCPBoolean, MCPBoolean(True)),
-        ("LightData", MCPLightData, None)                    # 260~350ms -> 200~250ms -> 30~50ms -> 13~15ms
-    ]
-    packet_id = 0x22
-    # 500~600ms -> 460~540ms -> 400~440ms -> [0~1ms] -> 100~130ms -> 15ms~17ms
+class _WorldDataPacketMixin:
     hm = {}
     light = {}
 
     @staticmethod
-    def get_world_data() -> tuple[int, int]:
+    def get_world_data(connect: MCNetConnect) -> tuple[int, int]:
         """用于获取世界数据, 以解析数据包
+
+        Args:
+            connect: 连接配置
 
         Return:
             世界高度, 世界最低y坐标
@@ -356,34 +401,27 @@ class MCCChunkDataAndUpdateLight(MCCPlayDataPacket):
         ...
 
     @classmethod
-    def _packet_unpack(cls, data):
-        # noinspection PyNoneFunctionAssignment
-        world_data = cls.get_world_data()
-        if world_data is None:
-            raise ValueError("请为 `MCCChunkDataAndUpdateLight` 设置正确的 `get_heightmap_class` 方法")
+    def _get_hm(cls, world_data) -> MCPHeightMap:
         heightmap = cls.hm.get(world_data, None)
         if heightmap is None:
             cls.hm[world_data] = MCPHeightMap.set_world_data(world_data[0], world_data[1])
             heightmap = cls.hm[world_data]
+        return heightmap
+
+    @classmethod
+    def _get_light(cls, world_data) -> MCPLightData:
         light = cls.light.get(world_data, None)
         if light is None:
             cls.light[world_data] = MCPLightData.set_world_data(world_data[0], world_data[1])
             light = cls.light[world_data]
-        result = {}
-        result["X"], offset = MCPInt.deserialize(data)
-        result["Z"], l = MCPInt.deserialize(data[offset:])
-        offset += l
-        # noinspection PyUnresolvedReferences
-        result["Heightmap"], l = heightmap.deserialize(data[offset:])
-        offset += l
-        result["Data"], l = MCPChunkData.deserialize(data[offset:])
-        offset += l
-        result["BlockEntities"], l = MCPBlockEntities.deserialize(data[offset:])
-        offset += l
-        result["TrustEdges"], l = MCPBoolean.deserialize(data[offset:])
-        offset += l
-        result["LightData"] = light.deserialize(data[offset:])[0]
-        return result
+        return light
+
+    @classmethod
+    def _get_world_data(cls, connect: MCNetConnect):
+        world_data = cls.get_world_data(connect)
+        if world_data is None:
+            raise ValueError(f"请为 `{cls.__name__}` 设置正确的 `get_world_data` 方法")
+        return world_data
 
     @classmethod
     def set_get_world_data(cls, func: Callable):
@@ -395,7 +433,45 @@ class MCCChunkDataAndUpdateLight(MCCPlayDataPacket):
         cls.get_world_data = func
 
 
-class MCCUpdateLight(MCCPlayDataPacket):
+class MCCChunkDataAndUpdateLight(MCCPlayDataPacket, _WorldDataPacketMixin):
+    fields = [
+        ("X", MCPInt, None),
+        ("Z", MCPInt, None),
+        ("Heightmap", MCPHeightMap, None),                   # 0~1ms -> 300us
+        ("Data", MCPChunkData, None),                        # 300~360ms -> 140~180ms -> 80~110ms -> 2ms -> 370us
+        ("BlockEntities", MCPBlockEntities, MCPBlockEntities([])),
+        # 尚未实现实体方块字段, 所以实体方块数量始终为0      (归档)实体方块字段已于 2026/7/23 获得完整实现
+        ("TrustEdges", MCPBoolean, MCPBoolean(True)),
+        ("LightData", MCPLightData, None)                    # 260~350ms -> 200~250ms -> 30~50ms -> 13~15ms -> 470us
+    ]
+    packet_id = 0x22
+    # 500~600ms -> 460~540ms -> 400~440ms -> [0~1ms] -> 100~130ms -> 15ms~17ms -> 650us
+
+
+    @classmethod
+    def _packet_unpack(cls, config, data):
+        # noinspection PyNoneFunctionAssignment
+        world_data = cls._get_world_data(config)
+        heightmap = cls._get_hm(world_data)
+        light = cls._get_light(world_data)
+        result = {}
+        result["X"], offset = MCPInt.deserialize(data)
+        result["Z"], l = MCPInt.deserialize(data, offset)
+        offset += l
+        # noinspection PyUnresolvedReferences
+        result["Heightmap"], l = heightmap.deserialize(data, offset)
+        offset += l
+        result["Data"], l = MCPChunkData.deserialize(data, offset)
+        offset += l
+        result["BlockEntities"], l = MCPBlockEntities.deserialize(data, offset)
+        offset += l
+        result["TrustEdges"], l = MCPBoolean.deserialize(data, offset)
+        offset += l
+        result["LightData"] = light.deserialize(data, offset)[0]
+        return result
+
+
+class MCCUpdateLight(MCCPlayDataPacket, _WorldDataPacketMixin):
     fields = [
         ("X", MCPInt, None),
         ("Z", MCPInt, None),
@@ -403,6 +479,18 @@ class MCCUpdateLight(MCCPlayDataPacket):
         ("LightData", MCPLightData, None)
     ]
     packet_id = 0x25
+
+    @classmethod
+    def _packet_unpack(cls, connect: MCNetConnect, data: bytearray | bytes) -> dict:
+        world_data = cls._get_world_data(connect)
+        result = {}
+        result["X"], offset = MCPInt.deserialize(data)
+        result["Z"], l = MCPInt.deserialize(data, offset)
+        offset += l
+        result["TrustEdges"], l = MCPBoolean.deserialize(data, offset)
+        offset += l
+        result["LightData"] = cls._get_light(world_data).deserialize(data, offset)[0]
+        return result
 
 
 class MCCJoinGame(MCCPlayDataPacket):
@@ -498,7 +586,7 @@ class MCSLoginPluginResponse(MCSLoginDataPacket):
     packet_id = 0x02
 
     @classmethod
-    def _packet_unpack(cls, data):
+    def _packet_unpack(cls, config, data):
         result = {}
         offset = 0
         result["MessageID"], l = MCPVarInt.deserialize(data)
@@ -642,7 +730,7 @@ packets = {
     (3, 0x59, 1): MCCTimeUpdate,
 }
 '''
-# packets: dict[tuple[int, int, int], type[MCDataPacket] | None]
+# packets: dict[tuple[int, int, int], type[MCPacket] | None]
 # {(状态, 数据包ID, 数据包接收方): 数据包类, ...}
 # 数据包接收方: 0表示服务端接收(C->S), 1表示客户端接收(S->C)
 
@@ -692,9 +780,9 @@ __all__ = [
     'MCSPlayerPositionAndRotation',
     'MCSPongPlay',
 
-    'MCDataPacket',
-    'MCCDataPacket',
-    'MCSDataPacket',
+    'MCPacket',
+    'MCCPacket',
+    'MCSPacket',
     'MCCStateDataPacket',
     'MCCLoginDataPacket',
     'MCCPlayDataPacket',
@@ -706,7 +794,7 @@ __all__ = [
     'MCSConfigurationDataPacket',
 
     'MCDataPacketMap',
-    'MCNetConfig',
+    'MCNetConnect',
 
     'SIDE_SERVER',
     'SIDE_CLIENT',

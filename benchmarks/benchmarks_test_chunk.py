@@ -1,22 +1,21 @@
-import random
-
-import easyprotolib as ep
 import gc
 
-from easyprotolib import MCCChunkDataAndUpdateLight, MCPLightData
-from timing import Timing
+from easyprotolib.datatypes import MCPLightData, MCPHeightMap, MCPChunkData
+from easyprotolib.data_packet import MCCChunkDataAndUpdateLight, MCNetConnect2Server, STATE_PLAY
+from easyprotolib.gameobjects import *
+from timing import *
 
 gc.disable()
 
 
-class Bedrock(ep.MCBlock):
+class Bedrock(MCBlock):
     mcid = "bedrock"
-    block_type = ep.IS_FULL_BLOCK
+    block_type = IS_FULL_BLOCK
     protocol_id = 33
 
-class GrassBlock(ep.MCBlock):
+class GrassBlock(MCBlock):
     mcid = "grass_block"
-    block_type = ep.IS_FULL_BLOCK
+    block_type = IS_FULL_BLOCK
     protocol_data = [
       {
         "properties": {
@@ -33,17 +32,17 @@ class GrassBlock(ep.MCBlock):
       }
     ]
 
-class Dirt(ep.MCBlock):
+class Dirt(MCBlock):
     mcid = "dirt"
-    block_type = ep.IS_FULL_BLOCK
+    block_type = IS_FULL_BLOCK
     protocol_id = 10
 
-class Air(ep.MCBlock):
-    mcid = "IS_AIR"
-    block_type = ep.IS_AIR
+class Air(MCBlock):
+    mcid = "air"
+    block_type = IS_AIR
     protocol_id = 0
 
-class Plains(ep.MCBiome):
+class Plains(MCBiome):
     mcid = "plains"
     protocol_id = 1
 
@@ -80,46 +79,56 @@ for i in range(5120, 12288):
     data1[i] = 15
 
 
-with Timing("区块初始化"):
-    with Timing("MCPLightData 初始化"):
-        light = ep.MCPLightData.set_world_data(384, -64)(data1, data2)
-        light.generate_empty_mask()
-        light.init_data()
-    with Timing("MCPHeightMap 初始化"):
-        hm = ep.MCPHeightMap.set_world_data(384, -64)
-        heightmap = hm({"MOTION_BLOCKING": [4] * 256, "WORLD_SURFACE": [4] * 256})
-    with Timing("MCChunk 初始化"):
-        chunk = ep.MCChunk(0, 0, blocks, biomes, light, heightmap)
+connect = MCNetConnect2Server(STATE_PLAY)
 
-print("\n---\n")
 
-with Timing("区块数据包序列化"):
-    with Timing("MCPHeightMap 序列化"):
-        data_h = heightmap.serialize()
-    with Timing("MCPChunkData 序列化"):
-        chunk_data = ep.MCPChunkData(chunk)
-        data_c = chunk_data.serialize()
-        print(f"MCPChunkData 长度: {len(data_c)} Bytes")
-    with Timing("MCPLightData 序列化"):
-        data_l = light.serialize()
-        print(f"MCPLightData 长度: {len(data_l)} Bytes")
-    with Timing("区块数据包初始化"):
-        packet = ep.MCCChunkDataAndUpdateLight(x=ep.MCPInt(0), z=ep.MCPInt(0), Heightmap=heightmap, data=chunk_data, LightData=light)
-    with Timing("组装数据包"):
-        data = packet.pack()
+with Timing("区块初始化") as timing:
+    light = MCPLightData.set_world_data(384, -64)(data1, data2)
+    light.generate_empty_mask()
+    light.init_data()
+    timing.add_part("MCPLightData 初始化")
+
+    hm = MCPHeightMap.set_world_data(384, -64)
+    heightmap = hm({"MOTION_BLOCKING": [4] * 256, "WORLD_SURFACE": [4] * 256})
+    timing.add_part("MCPHeightMap 初始化")
+
+    chunk = MCChunk(0, 0, blocks, biomes, light, heightmap)
+    timing.add_part("MCChunk 初始化")
+
+next_part()
+
+
+with Timing("区块数据包序列化") as timing:
+    data_h = heightmap.serialize()
+    timing.add_part("MCPHeightMap 序列化")
+
+    chunk_data = MCPChunkData(chunk)
+    data_c = chunk_data.serialize()
+    timing.add_part("MCPChunkData 序列化")
+    print(f"MCPChunkData 长度: {len(data_c)} Bytes")
+
+    data_l = light.serialize()
+    timing.add_part("MCPLightData 序列化")
+    print(f"MCPLightData 长度: {len(data_l)} Bytes")
+
+    packet = MCCChunkDataAndUpdateLight(x=0, z=0, Heightmap=heightmap, data=chunk_data, LightData=light)
+    timing.add_part("区块数据包初始化")
+
+    data = connect.pack(packet)
+    timing.add_part("组装数据包")
 
 print(f"数据包长度: {len(data)} Bytes")
 
-print("\n---\n")
+next_part()
 
 
 with Timing("MCPHeightMap 反序列化"):
     hm.deserialize(data_h)
 with Timing("MCPChunkData 反序列化"):
-    ep.MCPChunkData.deserialize(data_c)
+    MCPChunkData.deserialize(data_c)
 with Timing("MCPLightData 反序列化"):
     l: MCPLightData = light.deserialize(data_l)[0]
 
 with Timing("区块数据包反序列化"):
-    MCCChunkDataAndUpdateLight.set_get_world_data(lambda: (384, -64))
-    ep.MCDataPacket.unpack(ep.MCConfig(ep.STATE_PLAY, ep.SIDE_CLIENT), data)
+    MCCChunkDataAndUpdateLight.set_get_world_data(lambda config: (384, -64))
+    connect.unpack(data)

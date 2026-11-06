@@ -10,16 +10,39 @@ class MCPObjectArray(MCPObject):
 
     MCPObjectType: type[MCPObject] = MCPObject
     enable_cache = False
+    MAX_LEN = 1024
 
-    def __init__(self, data: list | tuple | bytes | bytearray, offset: int = 0):
+    def __init__(self, data: list | tuple | bytes | bytearray, offset: int = 0, fast_rw: bool = False):
         # [元素个数(MCPVarInt)][元素(MCPObject)][...]
         if isinstance(data, bytes):
             super().__init__(bytearray(data))
+            self.list_length, self.head_length = MCPVarInt.deserialize(self.data, offset)
+            self.data_length = self.get_length(data, offset)
         elif isinstance(data, bytearray):
             super().__init__(data)
+            self.list_length, self.head_length = MCPVarInt.deserialize(self.data, offset)
+            self.data_length = self.get_length(data, offset)
         else:
             super().__init__(bytearray(self.fast_serialize(data)))
+            self.list_length = len(data)
+            self.head_length = MCPVarInt.get_length(self.data, offset)
+            self.data_length = None
+        self.start = self.head_length + offset
         self.offset = offset
+        self.items = self._get_items()
+        self.fast_rw = fast_rw
+
+    def _get_items(self):
+        if self.MCPObjectType.length > 0:
+            return None
+        elif self.list_length > self.MAX_LEN and not self.fast_rw:
+            return None
+        items = []
+        offset = self.start
+        for i in range(self.list_length):
+            items.append(offset)
+            offset += self.MCPObjectType.get_length(self.data, offset)
+        return items
 
     # noinspection DuplicatedCode
     @classmethod
@@ -35,7 +58,9 @@ class MCPObjectArray(MCPObject):
         return result, offset - old_offset
 
     def serialize(self) -> bytearray | bytes:
-        return self.data[self.offset:self.offset + self.get_length(self.data, self.offset)]
+        if self.data_length is None:
+            return self.data
+        return self.data[self.offset:self.offset + self.data_length]
 
     @classmethod
     def fast_serialize(cls, data) -> bytearray:
@@ -58,40 +83,54 @@ class MCPObjectArray(MCPObject):
             offset += cls.MCPObjectType.get_length(data, offset)
         return offset - old_offset
 
-    def __getitem__(self, item):
-        length, offset = MCPVarInt.deserialize(self.data, self.offset)
-        if item >= length:
-            raise IndexError(f"索引越界, 索引为 {item}, 但列表长度只有 {length}")
-        if self.MCPObjectType.length > 0:
-            offset += self.MCPObjectType.length * item
+    def __getitem__(self, item: int):
+        if item >= self.list_length:
+            raise IndexError(f"索引越界, 索引为 {item}, 但列表长度只有 {self.list_length}")
+        if self.items is not None:
+            offset = self.items[item]
         else:
-            for _ in range(item):
-                offset += self.MCPObjectType.get_length(self.data, offset + self.offset)
+            offset = self.start
+            if self.MCPObjectType.length > 0:
+                offset += self.MCPObjectType.length * item
+            else:
+                for _ in range(item):
+                    offset += self.MCPObjectType.get_length(self.data, offset)
         if issubclass(self.MCPObjectType, MCPObjectArray):
-            return self.MCPObjectType(self.data, offset + self.offset)
-        return self.MCPObjectType.deserialize(self.data, offset + self.offset)[0]
+            return self.MCPObjectType(self.data, offset)
+        return self.MCPObjectType.deserialize(self.data, offset)[0]
 
-    def __setitem__(self, key, value):
-        length, offset = MCPVarInt.deserialize(self.data, self.offset)
-        if key >= length:
-            raise IndexError(f"索引越界, 索引为 {key}, 但列表长度只有 {length}")
-        if self.MCPObjectType.length > 0:
-            offset += self.MCPObjectType.length * key
+    def __setitem__(self, key: int, value):
+        if key >= self.list_length:
+            raise IndexError(f"索引越界, 索引为 {key}, 但列表长度只有 {self.list_length}")
+        if self.items is not None:
+            offset = self.items[key]
         else:
-            for _ in range(key):
-                offset += self.MCPObjectType.get_length(self.data, offset + self.offset)
+            offset = self.start
+            if self.MCPObjectType.length > 0:
+                offset += self.MCPObjectType.length * key
+            else:
+                for i in range(key):
+                    offset += self.MCPObjectType.get_length(self.data, offset)
         if not isinstance(value, self.MCPObjectType):
-            self.data[offset + self.offset:offset + self.MCPObjectType.get_length(self.data, offset + self.offset) + self.offset] = self.MCPObjectType.fast_serialize(value)
+            data = self.MCPObjectType.fast_serialize(value)
         else:
-            self.data[offset + self.offset:offset + self.MCPObjectType.get_length(self.data, offset + self.offset) + self.offset] = value.serialize()
+            data = value.serialize()
+        length = self.MCPObjectType.get_length(self.data, offset)
+        self.data[offset:offset + length] = data
+        delta = len(data) - length
+        if delta != 0 and self.items is not None:
+            for i in range(key + 1, len(self.items)):
+                self.items[i] += delta
+            if self.data_length is not None:
+                self.data_length += delta
 
     def __len__(self):
-        return MCPVarInt.deserialize(self.data, self.offset)[0]
+        return self.list_length
 
     def __iter__(self):
-        length, offset = MCPVarInt.deserialize(self.data, self.offset)
-        for _ in range(length):
-            result, l = self.MCPObjectType.deserialize(self.data, offset + self.offset)
+        offset = self.start
+        for _ in range(self.list_length):
+            result, l = self.MCPObjectType.deserialize(self.data, offset)
             offset += l
             yield result
 
@@ -105,8 +144,6 @@ class MCPLongArray(MCPObjectArray):
 
     @classmethod
     def fast_serialize(cls, data: list[int | MCPLong]) -> bytearray:
-        if not isinstance(data, (list, tuple)):
-            raise TypeError("data 必须是列表或元组类型的")
         if len(data) == 0:
             return bytearray(1)
         if isinstance(data[0], MCPLong):
@@ -131,7 +168,21 @@ class MCPUnsignedByteArray(MCPObjectArray):
     @classmethod
     def _obj_deserialize(cls, data: bytearray, offset=0) -> tuple[Any, int]:
         length, l = MCPVarInt.deserialize(data, offset)
-        return list(data[offset+l:offset+length+l]), length + l
+        return list(data[offset + l:offset + length + l]), length + l
+
+    def __getitem__(self, item):
+        return self.data[item + self.start]
+
+    def __setitem__(self, key, value):
+        if isinstance(value, MCPUnsignedByte):
+            value = value.serialize()
+        self.data[key + self.start] = value
+
+    def __iter__(self):
+        offset = self.start
+        for _ in range(self.list_length):
+            yield self.data[offset]
+            offset += 1
 
 
 class MCPUnsignedByteArrayArray(MCPObjectArray):
