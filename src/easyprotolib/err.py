@@ -1,27 +1,17 @@
 class MinecraftException(Exception):
     pass
 
-class MCNotFound(MinecraftException):
+class MCPIDNotFound(MinecraftException):
     pass
 
-class MCProtocolIdNotFound(MCNotFound):
+class MCBlockNotFound(MinecraftException):
     pass
 
-class MCBlockNotFound(MCNotFound):
-    pass
-
-class MCPacketNotFound(MCProtocolIdNotFound):
+class MCPacketNotFound(MCPIDNotFound):
     pass
 
 class MCUnpackError(MinecraftException):
     pass
 
-
-__all__ = [
-    "MinecraftException",
-    "MCNotFound",
-    "MCBlockNotFound",
-    "MCUnpackError",
-    "MCProtocolIdNotFound",
-    "MCPacketNotFound"
-]
+class MCUnknownCompressionAlgorithm(MinecraftException):
+    pass

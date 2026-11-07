@@ -19,25 +19,27 @@ class MCBlockEntitiesMap:
 
 
 class MCBlockMap:
-    __blocks: list[tuple[int, list[dict], type['MCBlock']]] = []
+    __blocks: list[type['MCBlock']] = []
     __air: list[int] = []
 
     @classmethod
-    def set(cls, protocol_id: int, protocol_data: list[dict], block: type['MCBlock']) -> None:
-        cls.__blocks.append((protocol_id, protocol_data, block))
+    def set(cls, block: type['MCBlock']) -> None:
+        cls.__blocks.append(block)
         if block.is_air():
-            cls.__air.append(protocol_id)
+            cls.__air.append(block.protocol_id)
 
     @classmethod
-    def get(cls, protocol_id: int) -> type['MCBlock']:
-        for id, data, block in cls.__blocks:
-            if id == protocol_id:
+    def get_by_pid(cls, protocol_id: int) -> type['MCBlock']:
+        for block in cls.__blocks:
+            if protocol_id in block.protocol_ids:
                 return block
-        for id, data, block in cls.__blocks:
-            if id < 0:
-                for i in data:
-                    if i["id"] == protocol_id:
-                        return block
+        raise MCBlockNotFound()
+
+    @classmethod
+    def get_by_mcid(cls, mcid: str) -> type['MCBlock']:
+        for block in cls.__blocks:
+            if mcid == block.mcid:
+                return block
         raise MCBlockNotFound()
 
     @classmethod
@@ -49,7 +51,7 @@ class MCBlockMap:
         return sum(map(cls.__air.__contains__, protocol_id_list))
 
 
-class MCDataPacketMap:
+class MCPacketMap:
     __packets: dict[tuple[int, int, int], type['MCPacket'] | None] = {}
 
     @classmethod
@@ -73,5 +75,5 @@ class MCConnectMap:
 __all__ = [
     "MCBlockEntitiesMap",
     "MCBlockMap",
-    "MCDataPacketMap",
+    "MCPacketMap",
 ]

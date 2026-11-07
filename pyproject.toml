@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "easyprotolib"
-version = "0.5.0"
+version = "0.6.1"
 authors = [
     { name = "baiYunMieAwa", email = "baiyunmie@163.com" },
 ]

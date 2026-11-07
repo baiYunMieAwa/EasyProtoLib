@@ -296,6 +296,25 @@ class MCPInt(MCPObject):
         return data.to_bytes(4, byteorder='big', signed=True)
 
 
+class MCPUnsignedInt(MCPObject):
+    """MC数据类型 无符号整型"""
+    length = 4
+
+    def __init__(self, data: int):
+        super().__init__(data)
+
+    def _obj_serialize(self) -> bytes:
+        return self.data.to_bytes(4, byteorder='big', signed=False)
+
+    @staticmethod
+    def _obj_deserialize(data: bytearray, offset=0) -> tuple[int, int]:
+        return int.from_bytes(data[offset:offset + 4], byteorder='big', signed=False), 4
+
+    @staticmethod
+    def fast_serialize(data: int) -> bytes:
+        return data.to_bytes(4, byteorder='big', signed=False)
+
+
 class MCPLong(MCPObject):
     """MC数据类型 有符号长整型"""
     length = 8
@@ -314,6 +333,25 @@ class MCPLong(MCPObject):
     @staticmethod
     def fast_serialize(data: int) -> bytes:
         return data.to_bytes(8, byteorder='big', signed=True)
+
+
+class MCPUnsignedLong(MCPObject):
+    """MC数据类型 无符号长整型"""
+    length = 8
+
+    def __init__(self, data: int):
+        super().__init__(data)
+
+    def _obj_serialize(self) -> bytes:
+        return self.data.to_bytes(8, byteorder='big', signed=False)
+
+    @staticmethod
+    def _obj_deserialize(data: bytearray, offset=0) -> tuple[int, int]:
+        return int.from_bytes(data[offset:offset + 8], byteorder='big', signed=False), 8
+
+    @staticmethod
+    def fast_serialize(data: int) -> bytes:
+        return data.to_bytes(8, byteorder='big', signed=False)
 
 
 class MCPFloat(MCPObject):
@@ -542,7 +580,7 @@ class MCPJSONTextComponent(MCPString):
 
     @staticmethod
     def _obj_deserialize(data: bytearray, offset=0) -> tuple[str, int]:
-        data, length = super()._obj_deserialize(data, offset)
+        data, length = MCPString.deserialize(data, offset)
         return json.loads(data), length
 
 
@@ -825,6 +863,7 @@ def MCPObjectDuplicator(mc_object: type[MCPObject], obj: MCPObject) -> MCPObject
 
 __all__ = [
     "MCPObject",
+    "MCPVoid",
     "MCPBoolean",
     "MCPByte",
     "MCPUnsignedByte",
@@ -832,7 +871,9 @@ __all__ = [
     "MCPShort",
     "MCPUnsignedShort",
     "MCPInt",
+    "MCPUnsignedInt",
     "MCPLong",
+    "MCPUnsignedLong",
     "MCPUUID",
     "MCPVarInt",
     "MCPVarLong",

@@ -51,7 +51,7 @@ EasyProtoLib 命名约定
 ## 注册表
 统一使用 `MC-` 前缀，并附加 `-Map` 后缀。
 
-示例：`MCBlockEntitiesMap` `MCBlockMap` `MCDataPacketMap`
+示例：`MCBlockEntitiesMap` `MCBlockMap` `MCPacketMap`
 
 ## 常量
 常量使用常量命名法。

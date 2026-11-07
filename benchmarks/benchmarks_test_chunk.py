@@ -64,7 +64,7 @@ for y in range(-63, -61):
 y = -61
 for z in range(16):
     for x in range(16):
-        blocks[x + z * 16 + (y + 64) * 256] = GrassBlock()
+        blocks[x + z * 16 + (y + 64) * 256] = GrassBlock(state={"snowy": "false"})
 
 biomes = []
 for y in range(-64, 320, 4):

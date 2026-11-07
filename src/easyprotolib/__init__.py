@@ -8,4 +8,4 @@ from . import datatypes, gameobjects, data_packet, err, map
 if debug:
     from .datatypes.basic_datatypes import MCPDependentObject, MCPStruct
 
-__version__ = "0.5.0"
+__version__ = "0.6.1"

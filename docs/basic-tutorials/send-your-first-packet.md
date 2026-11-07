@@ -7,7 +7,7 @@
 转到 `MCSHandshake` 的定义，可以看到它的定义如下：
 
 ```python
-class MCSHandshake(MCSHandshakeDataPacket):
+class MCSHandshake(MCSHandshakePacket):
     fields = [
         ("ProtocolVersion", MCPVarInt, None),
         ("ServerAddress", MCPString, None),
@@ -23,7 +23,7 @@ class MCSHandshake(MCSHandshakeDataPacket):
  - ServerPort：服务器端口。`MCPUnsignedShort` 类型。默认值为 `MCPUnsignedShort(25565)`。查询Wiki得知，原版服务器不使用这个信息。
  - NextState：发送握手包后，服务器即将进入的协议状态。`MCPVarInt` 类型。无默认值。
 
-通过定义，我们还可以得知：握手包的包ID为 `0x00`（`packet_id = 0x00`），客户端所处状态为 `Handshake`，传输方向为 `C->S`（`MCSHandshakeDataPacket`，详见[命名约定](../naming-convention.md)）。
+通过定义，我们还可以得知：握手包的包ID为 `0x00`（`packet_id = 0x00`），客户端所处状态为 `Handshake`，传输方向为 `C->S`（`MCSHandshakePacket`，详见[命名约定](../naming-convention.md)）。
 
 有了这些信息，我们就可以开始正式编写代码了。
 
@@ -51,7 +51,7 @@ packet = MCSHandshake(
 )
 ```
 
-创建一个连接，打包数据包并发送，然后输出服务端返回的原始字节。
+创建一个连接，打包数据包并发送，然后输出服务端返回的原始字节。因为是连接到服务器，所以我们这里选择 `MCNetConnect2Server` 类型。
 这里需要一点`socket`基础，这是[相关教程](https://www.runoob.com/python3/python3-socket.html)。
 
 ```python
@@ -61,6 +61,7 @@ data = connect.pack(packet)
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect((address, 25565))
 s.send(data)
+connect.set_state(STATE_STATE)              # 为了和服务器状态保持同步，我们必须在发送握手包后立刻进入 state 状态
 s.send(connect.pack(MCSRequestStatus()))    # 这是另一个数据包，它没有字段，只有在发送握手包后紧接着发送它，服务器才会返回自己的信息
 
 print(s.recv(1024))
@@ -87,6 +88,7 @@ data = connect.pack(packet)
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect((address, 25565))
 s.send(data)
+connect.set_state(STATE_STATE)              # 为了和服务器状态保持同步，我们必须在发送握手包后立刻进入 state 状态
 s.send(connect.pack(MCSRequestStatus()))    # 这是另一个数据包，它没有字段，只有在发送握手包后紧接着发送它，服务器才会返回自己的信息
 
 print(s.recv(1024))

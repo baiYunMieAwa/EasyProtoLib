@@ -1,5 +1,5 @@
-from easyprotolib.datatypes import MCPCommandGraph
-from easyprotolib.datatypes import COMMAND_HAS_REDIRECT, COMMAND_HAS_SUGGESTIONS_TYPE, COMMAND_IS_EXECUTABLE, COMMAND_LITERAL_NODE, COMMAND_ARGUMENT_NODE
+from ..datatypes import MCPCommandGraph
+from ..datatypes import COMMAND_HAS_REDIRECT, COMMAND_HAS_SUGGESTIONS_TYPE, COMMAND_IS_EXECUTABLE, COMMAND_LITERAL_NODE, COMMAND_ARGUMENT_NODE
 
 
 COMMAND_ARGTYPE_ASK_SERVER  =   "minecraft:ask_server"
@@ -70,7 +70,7 @@ class MCCommandArgumentNode(MCCommandNode):
         )
 
 
-class _MCCommandNumberArgumentNode(MCCommandArgumentNode):
+class _MCCommandNumberNode(MCCommandArgumentNode):
     _parser = ""
 
     # noinspection PyShadowingBuiltins
@@ -89,23 +89,23 @@ class _MCCommandNumberArgumentNode(MCCommandArgumentNode):
         )
 
 
-class MCCommandDoubleArgumentNode(_MCCommandNumberArgumentNode):
+class MCCommandDoubleNode(_MCCommandNumberNode):
     _parser = "brigadier:double"
 
 
-class MCCommandFloatArgumentNode(_MCCommandNumberArgumentNode):
+class MCCommandFloatNode(_MCCommandNumberNode):
     _parser = "brigadier:float"
 
 
-class MCCommandIntArgumentNode(_MCCommandNumberArgumentNode):
+class MCCommandIntNode(_MCCommandNumberNode):
     _parser = "brigadier:integer"
 
 
-class MCCommandLongArgumentNode(_MCCommandNumberArgumentNode):
+class MCCommandLongNode(_MCCommandNumberNode):
     _parser = "brigadier:long"
 
 
-class MCCommandStringArgumentNode(MCCommandArgumentNode):
+class MCCommandStringNode(MCCommandArgumentNode):
     def __init__(self, name: str, mode: int = 0, children: 'list[MCCommandNode]' = None,
                  *, is_executable = False, suggestions_type: str = None, redirect_node: 'MCCommandNode | None' = None):
         super().__init__(
@@ -114,7 +114,7 @@ class MCCommandStringArgumentNode(MCCommandArgumentNode):
         )
 
 
-class MCCommandEntitiesArgumentNode(MCCommandArgumentNode):
+class MCCommandEntitiesNode(MCCommandArgumentNode):
     flags = 0x00
 
     def __init__(self, name: str, children: 'list[MCCommandNode]' = None,
@@ -125,16 +125,50 @@ class MCCommandEntitiesArgumentNode(MCCommandArgumentNode):
         )
 
 
-class MCCommandOneEntityArgumentNode(MCCommandEntitiesArgumentNode):
+class MCCommandEntityNode(MCCommandEntitiesNode):
     flags = 0x01
 
 
-class MCCommandPlayersArgumentNode(MCCommandEntitiesArgumentNode):
+class MCCommandPlayersNode(MCCommandEntitiesNode):
     flags = 0x02
 
 
-class MCCommandOnePlayerArgumentNode(MCCommandEntitiesArgumentNode):
+class MCCommandPlayerNode(MCCommandPlayersNode):
     flags = 0x03
+
+
+class MCCommandScoreHoldersNode(MCCommandArgumentNode):
+    flags = 0x01
+
+    def __init__(self, name: str, children: 'list[MCCommandNode]' = None,
+                 *, is_executable = False, suggestions_type: str = None, redirect_node: 'MCCommandNode | None' = None):
+        super().__init__(
+            name, "minecraft:score_holder", {"flags": self.flags}, children,
+            is_executable=is_executable, suggestions_type=suggestions_type, redirect_node=redirect_node
+        )
+
+
+class MCCommandScoreHolderNode(MCCommandScoreHoldersNode):
+    flags = 0x00
+
+
+class _MCCommandRangeNode(MCCommandArgumentNode):
+    decimals = None
+
+    def __init__(self, name: str, children: 'list[MCCommandNode]' = None,
+                 *, is_executable=False, suggestions_type: str = None, redirect_node: 'MCCommandNode | None' = None):
+        super().__init__(
+            name, "minecraft:range", {"decimals": self.decimals}, children,
+            is_executable=is_executable, suggestions_type=suggestions_type, redirect_node=redirect_node
+        )
+
+
+class MCCommandIntRangeNode(_MCCommandRangeNode):
+    decimals = False
+
+
+class MCCommandFloatRangeNode(_MCCommandRangeNode):
+    decimals = True
 
 
 class MCCommandGraph:
@@ -178,15 +212,18 @@ class MCCommandGraph:
 
 __all__ = [
     "MCCommandGraph",
-    "MCCommandDoubleArgumentNode",
-    "MCCommandIntArgumentNode",
-    "MCCommandLongArgumentNode",
-    "MCCommandFloatArgumentNode",
-    "MCCommandOneEntityArgumentNode",
-    "MCCommandOnePlayerArgumentNode",
-    "MCCommandPlayersArgumentNode",
-    "MCCommandEntitiesArgumentNode",
-    "MCCommandStringArgumentNode",
+    "MCCommandDoubleNode",
+    "MCCommandIntNode",
+    "MCCommandLongNode",
+    "MCCommandFloatNode",
+    "MCCommandEntityNode",
+    "MCCommandPlayerNode",
+    "MCCommandPlayersNode",
+    "MCCommandEntitiesNode",
+    "MCCommandStringNode",
+    "MCCommandIntRangeNode",
+    "MCCommandFloatRangeNode",
+    "MCCommandScoreHoldersNode",
     "MCCommandArgumentNode",
     "MCCommandLiteralNode",
     "MCCommandRoot",
@@ -203,8 +240,8 @@ if __name__ == "__main__":
     execute.add_child(run)
     root.add_child(execute)
     tp = MCCommandLiteralNode("tp")
-    entities = MCCommandEntitiesArgumentNode("entities")
-    entity = MCCommandOneEntityArgumentNode("entity")
+    entities = MCCommandEntitiesNode("entities")
+    entity = MCCommandEntityNode("entity")
     tp.add_child(entities)
     entities.add_child(entity)
     root.add_child(tp)

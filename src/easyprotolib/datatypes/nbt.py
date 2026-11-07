@@ -1,7 +1,7 @@
 from typing import Any
 
 from mutf8 import encode_modified_utf8, decode_modified_utf8
-from easyprotolib.datatypes.basic_datatypes import MCPObject, MCPUnsignedByte, MCPUnsignedShort, MCPByte, MCPShort, MCPInt, MCPLong, MCPFloat, MCPDouble
+from .basic_datatypes import MCPObject, MCPUnsignedByte, MCPUnsignedShort, MCPByte, MCPShort, MCPInt, MCPLong, MCPFloat, MCPDouble, MCPUnsignedLong
 
 
 class MCPNBT(MCPObject):
@@ -22,9 +22,9 @@ class MCPNBT(MCPObject):
         # [标签ID][标签名字节数][mutf-8编码的标签名][负载]
         # [1B][2B][...][...]
         if self.name == "":
-            return MCPUnsignedByte(self.id) + b'\x00\x00' + self._nbt_serialize(self.data)
+            return bytearray(MCPUnsignedByte.fast_serialize(self.id)) + b'\x00\x00' + self._nbt_serialize(self.data)
         name = encode_modified_utf8(self.name)
-        return MCPUnsignedByte(self.id) + MCPUnsignedShort(len(name)) + name + self._nbt_serialize(self.data)
+        return MCPUnsignedByte.fast_serialize(self.id) + MCPUnsignedShort(len(name)) + name + self._nbt_serialize(self.data)
 
     @classmethod
     def fast_serialize(cls, data: tuple[str, Any]) -> bytearray | bytes:
@@ -34,7 +34,7 @@ class MCPNBT(MCPObject):
         return bytearray(MCPUnsignedByte.fast_serialize(cls.id)) + MCPUnsignedShort(len(name)) + name + cls._nbt_serialize(data[1])
 
     @staticmethod
-    def _obj_deserialize(data: bytearray, offset=0) -> tuple[tuple[type, str, ...], int]:
+    def _obj_deserialize(data: bytearray, offset=0) -> tuple[tuple[type['MCPNBT'], str, ...], int]:
         old_offset = offset
         id = data[offset]
         tag = NBT_tag_id[id]
@@ -47,6 +47,20 @@ class MCPNBT(MCPObject):
         offset += name_length
         result = tag._nbt_deserialize(data[offset:])
         return (tag, name, result[0]), offset + result[1] - old_offset
+
+    @classmethod
+    def get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        tag = NBT_tag_id[data[offset]]
+        if tag == TAGEnd:
+            return 1
+        offset += 1
+        name_length, l = MCPUnsignedShort._obj_deserialize(data, offset)
+        offset += l
+        offset += name_length
+        return 1 + l + name_length + tag._nbt_get_length(data, offset)
+
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int: ...
 
     @staticmethod
     def _nbt_serialize(data) -> bytearray:
@@ -98,6 +112,10 @@ class TAGEnd(MCPNBT):
             return (TAGEnd, "", None), 1
         raise ValueError("data 的 id 不是 0x00, 却尝试解码为 TAGEnd 标签")
 
+    @classmethod
+    def get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        return 1
+
 
 class TAGByte(MCPNBT):
     """MC-NBT数据类型 有符号字节"""
@@ -113,6 +131,10 @@ class TAGByte(MCPNBT):
     @staticmethod
     def _nbt_deserialize(data: bytearray) -> tuple[int, int]:
         return MCPByte._obj_deserialize(data)
+
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        return 1
 
 
 class TAGShort(MCPNBT):
@@ -130,6 +152,10 @@ class TAGShort(MCPNBT):
     def _nbt_deserialize(data: bytearray) -> tuple[int, int]:
         return MCPShort._obj_deserialize(data)
 
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        return 2
+
 
 class TAGInt(MCPNBT):
     """MC-NBT数据类型 有符号整型"""
@@ -145,6 +171,10 @@ class TAGInt(MCPNBT):
     @staticmethod
     def _nbt_deserialize(data: bytearray) -> tuple[int, int]:
         return MCPInt._obj_deserialize(data)
+
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        return 4
 
 
 class TAGLong(MCPNBT):
@@ -162,6 +192,10 @@ class TAGLong(MCPNBT):
     def _nbt_deserialize(data: bytearray) -> tuple[int, int]:
         return MCPLong._obj_deserialize(data)
 
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        return 8
+
 
 class TAGFloat(MCPNBT):
     """MC-NBT数据类型 单精度浮点数"""
@@ -178,6 +212,10 @@ class TAGFloat(MCPNBT):
     def _nbt_deserialize(data: bytearray) -> tuple[float, int]:
         return MCPFloat._obj_deserialize(data)
 
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        return 4
+
 
 class TAGDouble(MCPNBT):
     """MC-NBT数据类型 双精度浮点数"""
@@ -193,6 +231,10 @@ class TAGDouble(MCPNBT):
     @staticmethod
     def _nbt_deserialize(data: bytearray) -> tuple[float, int]:
         return MCPDouble._obj_deserialize(data)
+
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        return 8
 
 
 class TAGArray(MCPNBT):
@@ -214,6 +256,13 @@ class TAGArray(MCPNBT):
             result.append(t[0])
             offset += t[1]
         return result, offset
+
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        length, offset2 = MCPInt._obj_deserialize(data, offset)
+        for i in range(length):
+            offset2 += cls.tag_type.get_length(data, offset2 + offset)
+        return offset2
 
 
 class TAGByteArray(TAGArray):
@@ -240,6 +289,10 @@ class TAGString(MCPNBT):
         length, l = MCPUnsignedShort._obj_deserialize(data)
         result = decode_modified_utf8(data[l:l + length])
         return result, length + l
+
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        return sum(MCPUnsignedShort._obj_deserialize(data, offset))
 
 
 class TAGList(MCPNBT):
@@ -276,6 +329,16 @@ class TAGList(MCPNBT):
             offset += t[1]
         return result, offset
 
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        id, offset2 = MCPUnsignedByte._obj_deserialize(data, offset)
+        tag = NBT_tag_id[id]
+        num, l = MCPInt._obj_deserialize(data, offset2 + offset)
+        offset2 += l
+        for i in range(num):
+            offset2 += tag._nbt_get_length(data, offset2 + offset)
+        return offset2
+
 
 class TAGCompound(MCPNBT):
     """MC-NBT数据类型 复合标签"""
@@ -294,11 +357,20 @@ class TAGCompound(MCPNBT):
         result = []
         offset = 0
         while True:
-            (tag, name, r), l = MCPNBT._obj_deserialize(data, offset)
-            offset += l
+            (tag, name, data2), length = MCPNBT._obj_deserialize(data, offset)
+            offset += length
             if tag == TAGEnd:
                 return result, offset
-            result.append(tag(name, r))
+            result.append(tag(name, data2))
+
+    @classmethod
+    def _nbt_get_length(cls, data: bytearray | bytes | None = None, offset: int = 0) -> int:
+        offset2 = 0
+        while True:
+            if data[offset2 + offset] == 0:
+                return offset2 + 1
+            length = MCPNBT.get_length(data, offset2 + offset)
+            offset2 += length
 
 
 class TAGIntArray(TAGArray):
@@ -311,6 +383,12 @@ class TAGLongArray(TAGArray):
     """MC-NBT数据类型 长整型数组"""
     id = 0x0C
     tag_type = MCPLong
+
+
+class TAGUnsignedLongArray(TAGArray):
+    """MC-NBT非标准数据类型 长整型数组"""
+    id = 0x0C
+    tag_type = MCPUnsignedLong
 
 
 NBT_tag_id = [
@@ -343,5 +421,6 @@ __all__ = [
     "TAGList",
     "TAGCompound",
     "TAGIntArray",
-    "TAGLongArray"
+    "TAGLongArray",
+    "TAGUnsignedLongArray"
 ]

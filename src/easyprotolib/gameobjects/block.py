@@ -1,6 +1,6 @@
-from easyprotolib.err import MCProtocolIdNotFound
-from easyprotolib.datatypes.nbt import TAGCompound
-from easyprotolib.map import MCBlockEntitiesMap, MCBlockMap
+from ..err import MCPIDNotFound
+from ..datatypes.nbt import TAGCompound
+from ..map import MCBlockEntitiesMap, MCBlockMap
 
 HAS_DIRECTION = 0x01
 CAN_CONTAIN_WATER = 0x02
@@ -23,16 +23,17 @@ class MCBlock:
     # 0x04: 是完整方块
     # 0x08: 是空气
     # 0x10: 是液体
-    def __init__(self, state=None, data: TAGCompound = TAGCompound("", [])):
+    def __init__(self, state=None, data: TAGCompound = None):
         if state is None:
             state = {}
+        if data is None:
+            data = TAGCompound("", [])
         self.x = None
         self.y = None
         self.z = None
         self.chunk_x = self.chunk_z = None
         self.block_x = self.block_z = None
         self.state = state
-        self.protocol_state = [str(i).replace("True", "true").replace("False", "false") for i in self.state]
         self.block_entity_data: TAGCompound = data
 
     def _set_pos(self, x, y, z):
@@ -66,13 +67,13 @@ class MCBlock:
             return self.protocol_id
         default = -1
         for i in self.protocol_data:
-            if "properties" in i and i["properties"] == self.protocol_state:
+            if "properties" in i and i["properties"] == self.state:
                 self.protocol_id = i["id"]
                 return i["id"]
             elif "default" in i and i["default"]:
                 default = i["id"]
         if default == -1:
-            raise MCProtocolIdNotFound(f"block: {self.get_identifier()}, state: {self.protocol_state} / {self.state}")
+            raise MCPIDNotFound(f"block: {self.get_identifier()}, state: {self.state}")
         self.protocol_id = default
         return default
 
@@ -86,7 +87,11 @@ class MCBlock:
 
     def __init_subclass__(cls, **kwargs):
         if cls.protocol_id >= 0 or len(cls.protocol_data) > 0:
-            MCBlockMap.set(cls.protocol_id, cls.protocol_data, cls)
+            if cls.protocol_id >= 0:
+                cls.protocol_ids = [cls.protocol_id]
+            else:
+                cls.protocol_ids = [i["id"] for i in cls.protocol_data]
+            MCBlockMap.set(cls)
             if cls.is_block_entity:
                 if cls.block_entity_id >= 0:
                     MCBlockEntitiesMap.set(cls.block_entity_id, cls)
